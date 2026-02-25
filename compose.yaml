@@ -17,6 +17,8 @@ services:
       - phoenixd
     ports:
       - "3000:3000"
+    environment:
+      - CPFP_MNEMONIC
     volumes:
       - ./config.toml:/app/config.toml:ro
       - cpfp_data:/app/data

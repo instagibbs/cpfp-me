@@ -12,11 +12,12 @@ pub struct Config {
     pub listen_addr: SocketAddr,
     pub markup_percent: f64,
     pub utxo_target_count: u32,
-    pub mnemonic: String,
     pub wallet_db_path: PathBuf,
     pub phoenixd_url: String,
     pub phoenixd_password: String,
     pub mempool_api_url: String,
+    #[serde(skip)]
+    pub mnemonic: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,8 +45,17 @@ impl Config {
     pub fn load(path: &str) -> Result<Self, AppError> {
         let contents = std::fs::read_to_string(path)
             .map_err(|e| AppError::Internal(format!("Failed to read config file '{path}': {e}")))?;
-        let config: Self = toml::from_str(&contents)
+        let mut config: Self = toml::from_str(&contents)
             .map_err(|e| AppError::Internal(format!("Failed to parse config file: {e}")))?;
+
+        config.mnemonic = std::env::var("CPFP_MNEMONIC").map_err(|_| {
+            AppError::Internal(
+                "CPFP_MNEMONIC environment variable not set. \
+                 Export it with your 12 or 24 word BIP39 mnemonic."
+                    .into(),
+            )
+        })?;
+
         config.validate()?;
         Ok(config)
     }
@@ -61,10 +71,11 @@ impl Config {
                 "utxo_target_count must be at least 1".into(),
             ));
         }
-        if self.mnemonic.split_whitespace().count() != 12
-            && self.mnemonic.split_whitespace().count() != 24
-        {
-            return Err(AppError::Internal("mnemonic must be 12 or 24 words".into()));
+        let word_count = self.mnemonic.split_whitespace().count();
+        if word_count != 12 && word_count != 24 {
+            return Err(AppError::Internal(
+                "CPFP_MNEMONIC must be 12 or 24 words".into(),
+            ));
         }
         Ok(())
     }

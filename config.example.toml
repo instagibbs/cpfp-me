@@ -10,10 +10,8 @@ markup_percent = 10.0
 # Target number of pre-split UTXOs in the hot wallet
 utxo_target_count = 10
 
-# BIP39 mnemonic for the hot wallet (12 or 24 words)
-# Generate with: python3 -c "from bip39 import Mnemonic; print(Mnemonic().generate())"
-# Or any BIP39 tool. Keep this secret and backed up!
-mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+# Hot wallet mnemonic is provided via CPFP_MNEMONIC env var (not in this file).
+# export CPFP_MNEMONIC="your twelve or twenty four word mnemonic here"
 
 # Path for BDK wallet SQLite database
 wallet_db_path = "./data/wallet.db"
