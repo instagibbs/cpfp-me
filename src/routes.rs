@@ -69,6 +69,13 @@ async fn handle_submit(
         state.config.markup_percent,
     );
 
+    // Verify we can actually cover this fee before taking payment
+    if !state.wallet.can_cover_fee(total_fee)? {
+        return Err(AppError::AtCapacity(
+            "no wallet UTXOs available to fund this bump, try again later".into(),
+        ));
+    }
+
     let description = format!("cpfp.me: bump tx {}", parent.tx.compute_txid());
     let invoice = state
         .payment

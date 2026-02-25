@@ -19,6 +19,9 @@ pub enum AppError {
     #[error("Broadcast failed: {0}")]
     Broadcast(String),
 
+    #[error("Service at capacity: {0}")]
+    AtCapacity(String),
+
     #[error("Order not found: {0}")]
     NotFound(String),
 
@@ -30,6 +33,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             Self::InvalidTx { .. } => (StatusCode::BAD_REQUEST, self.to_string()),
+            Self::AtCapacity(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             Self::FeeEstimation(_) => {
                 tracing::error!("{self}");

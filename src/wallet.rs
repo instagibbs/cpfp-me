@@ -122,4 +122,15 @@ impl AppWallet {
             .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
         Ok(wallet.balance().total().to_sat())
     }
+
+    /// Returns true if the wallet has a UTXO large enough to cover
+    /// the given fee amount.
+    pub fn can_cover_fee(&self, fee: bitcoin::Amount) -> Result<bool, AppError> {
+        let wallet = self
+            .wallet
+            .lock()
+            .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
+        let has_sufficient = wallet.list_unspent().any(|u| u.txout.value >= fee);
+        Ok(has_sufficient)
+    }
 }
