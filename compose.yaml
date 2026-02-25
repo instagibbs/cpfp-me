@@ -1,0 +1,27 @@
+services:
+  phoenixd:
+    image: acinq/phoenixd:latest
+    command:
+      - --agree-to-terms-of-service
+      - --http-bind-ip=0.0.0.0
+      - --chain=testnet
+    volumes:
+      - phoenixd_data:/phoenix/.phoenix
+    ports:
+      - "9740:9740"
+    restart: unless-stopped
+
+  cpfp:
+    build: .
+    depends_on:
+      - phoenixd
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - cpfp_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  phoenixd_data:
+  cpfp_data:

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cpfp.me — Get your transaction mined</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>cpfp.me</h1>
+      <p class="tagline">You built a zero-fee transaction. We get it mined.</p>
+    </header>
+
+    <section id="state-input">
+      <p class="description">
+        Submit your TRUC transaction with a P2A anchor output.
+        Pay the mining fee over Lightning.
+        We broadcast a CPFP child and get you into the next block.
+      </p>
+      <textarea id="raw-tx" placeholder="Paste raw transaction hex..." rows="6"></textarea>
+      <button id="btn-submit" onclick="submitTx()">Bump Transaction</button>
+      <div id="input-error" class="error hidden"></div>
+    </section>
+
+    <section id="state-invoice" class="hidden">
+      <h2>Pay Lightning Invoice</h2>
+      <div class="invoice-card">
+        <div id="qr-container"></div>
+        <div class="bolt11-container">
+          <code id="bolt11-text"></code>
+          <button class="copy-btn" onclick="copyBolt11()">Copy</button>
+        </div>
+        <div class="fee-details">
+          <span>Fee rate: <strong id="fee-rate-display"></strong> sat/vB</span>
+          <span>Total: <strong id="amount-display"></strong> sats</span>
+        </div>
+      </div>
+      <p class="waiting">Waiting for payment<span class="dots"></span></p>
+    </section>
+
+    <section id="state-broadcasting" class="hidden">
+      <div class="spinner"></div>
+      <p>Broadcasting your transaction...</p>
+    </section>
+
+    <section id="state-success" class="hidden">
+      <div class="checkmark">&#10003;</div>
+      <h2>Transaction Broadcast</h2>
+      <p>Your transaction has been submitted to the network.</p>
+      <a id="mempool-link" href="#" target="_blank" rel="noopener">View on mempool.space</a>
+      <button onclick="resetForm()">Bump Another</button>
+    </section>
+
+    <section id="state-error" class="hidden">
+      <div class="error-icon">&#10007;</div>
+      <h2>Something went wrong</h2>
+      <p id="error-message" class="error"></p>
+      <button onclick="resetForm()">Try Again</button>
+    </section>
+
+    <footer>
+      <p>
+        TRUC + P2A decouples transaction construction from fee payment.
+        Build your tx now, pay for confirmation later.
+      </p>
+    </footer>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

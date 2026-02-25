@@ -1,0 +1,37 @@
+[package]
+name = "cpfp-me"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+bitcoin = { version = "0.32", features = ["serde", "rand-std"] }
+bdk_wallet = { version = "2.3", features = ["rusqlite", "keys-bip39"] }
+bdk_esplora = { version = "0.22", features = ["async-https", "tokio"] }
+hex = "0.4"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8"
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+panic_in_result_fn = "deny"
+unimplemented = "deny"
+allow_attributes = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+module_name_repetitions = "allow"
+similar_names = "allow"

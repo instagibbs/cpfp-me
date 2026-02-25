@@ -1,0 +1,30 @@
+# Network: "bitcoin", "testnet", "testnet4", "signet", or "regtest"
+network = "testnet"
+
+# Address and port for the HTTP server
+listen_addr = "127.0.0.1:3000"
+
+# Fee markup percentage (e.g. 10.0 = 10% premium over raw mining fee)
+markup_percent = 10.0
+
+# Target number of pre-split UTXOs in the hot wallet
+utxo_target_count = 10
+
+# BIP39 mnemonic for the hot wallet (12 or 24 words)
+# Generate with: python3 -c "from bip39 import Mnemonic; print(Mnemonic().generate())"
+# Or any BIP39 tool. Keep this secret and backed up!
+mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+# Path for BDK wallet SQLite database
+wallet_db_path = "./data/wallet.db"
+
+# Phoenixd Lightning node (for receiving payments)
+# Run with: phoenixd --chain=testnet --agree-to-terms-of-service
+# Password is in ~/.phoenix/phoenix.conf after first run
+phoenixd_url = "http://127.0.0.1:9740"
+phoenixd_password = "your-phoenixd-http-password"
+
+# mempool.space API base URL
+# Mainnet: https://mempool.space
+# Testnet: https://mempool.space/testnet
+mempool_api_url = "https://mempool.space/testnet"
