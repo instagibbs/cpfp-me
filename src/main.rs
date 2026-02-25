@@ -1,20 +1,11 @@
-mod broadcast;
-mod child;
-mod config;
-mod error;
-mod fees;
-mod payment;
-mod routes;
-mod state;
-mod validate;
-mod wallet;
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::payment::PhoenixdClient;
-use crate::state::AppState;
-use crate::wallet::AppWallet;
+use cpfp_me::config;
+use cpfp_me::payment::PhoenixdClient;
+use cpfp_me::routes;
+use cpfp_me::state::AppState;
+use cpfp_me::wallet::AppWallet;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

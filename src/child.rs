@@ -1,4 +1,4 @@
-use bdk_wallet::Wallet;
+use bdk_wallet::{KeychainKind, Wallet};
 use bitcoin::consensus::Encodable;
 use bitcoin::psbt::Input as PsbtInput;
 use bitcoin::{Amount, OutPoint, Transaction, TxOut, Weight};
@@ -36,12 +36,25 @@ pub fn build_child_tx(
     // P2A spending requires an empty witness (1 WU for the count byte)
     let satisfaction_weight = Weight::from_witness_data_size(1);
 
+    // Pick one wallet UTXO to fund the fee (keeps child small)
+    let our_utxo = wallet
+        .list_unspent()
+        .find(|u| u.txout.value >= total_fee)
+        .ok_or_else(|| AppError::Wallet("no UTXO large enough to cover the fee".into()))?;
+
+    // Change goes back to our wallet
+    let change_addr = wallet.reveal_next_address(KeychainKind::Internal).address;
+
     let mut builder = wallet.build_tx();
     builder
         .version(3)
         .add_foreign_utxo(p2a_outpoint, psbt_input, satisfaction_weight)
         .map_err(|e| AppError::Wallet(format!("failed to add P2A utxo: {e}")))?
-        .fee_absolute(total_fee);
+        .add_utxo(our_utxo.outpoint)
+        .map_err(|e| AppError::Wallet(format!("failed to add wallet utxo: {e}")))?
+        .manually_selected_only()
+        .fee_absolute(total_fee)
+        .drain_to(change_addr.script_pubkey());
 
     let mut psbt = builder
         .finish()

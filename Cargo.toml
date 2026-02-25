@@ -35,3 +35,9 @@ print_stdout = "deny"
 print_stderr = "deny"
 module_name_repetitions = "allow"
 similar_names = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+
+[dev-dependencies]
+bitcoind = "0.36"
