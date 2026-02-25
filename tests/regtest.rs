@@ -158,7 +158,7 @@ fn child_tx_has_correct_structure() {
 
     // Build the CPFP child
     let total_fee = Amount::from_sat(500);
-    let child = build_child_tx(&mut wallet, &parent, total_fee).unwrap();
+    let child = build_child_tx(&mut wallet, &parent, total_fee, 10).unwrap();
 
     // -- Verify child structure --
     assert_eq!(child.tx.version, Version(3), "child must be TRUC v3");
@@ -220,7 +220,7 @@ fn package_accepted_by_bitcoind() {
     let parent = validate_parent_tx(&parent_hex).unwrap();
 
     let total_fee = Amount::from_sat(1000);
-    let child = build_child_tx(&mut wallet, &parent, total_fee).unwrap();
+    let child = build_child_tx(&mut wallet, &parent, total_fee, 10).unwrap();
 
     // Submit as package via submitpackage RPC
     let result: serde_json::Value = rpc
