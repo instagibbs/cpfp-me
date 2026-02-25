@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use bitcoin::{Amount, OutPoint};
 
@@ -24,6 +25,7 @@ pub struct Order {
     pub fee_rate: u64,
     pub reserved_utxo: OutPoint,
     pub status: OrderStatus,
+    pub created_at: Instant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +51,7 @@ impl Order {
             invoice,
             reserved_utxo,
             status: OrderStatus::AwaitingPayment,
+            created_at: Instant::now(),
         }
     }
 }

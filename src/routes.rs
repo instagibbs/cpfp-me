@@ -91,6 +91,17 @@ async fn handle_submit(
     };
 
     let order_id = uuid::Uuid::new_v4().to_string();
+    let parent_txid = parent.tx.compute_txid();
+
+    tracing::info!(
+        order_id = %order_id,
+        parent_txid = %parent_txid,
+        fee_rate,
+        total_fee_sats = total_fee.to_sat(),
+        reserved_utxo = %reserved_utxo,
+        "order created"
+    );
+
     let response = SubmitResponse {
         order_id: order_id.clone(),
         bolt11: invoice.bolt11.clone(),
@@ -157,7 +168,7 @@ async fn handle_awaiting_payment(
     let payment_status = state.payment.check_payment(&payment_hash).await?;
 
     if payment_status == PaymentStatus::Paid {
-        // Consume the reservation — we're about to spend the UTXO
+        tracing::info!(order_id, "payment received");
         let reserved_utxo = {
             let mut orders = lock_orders(state)?;
             let order = orders

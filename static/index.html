@@ -37,7 +37,7 @@
           <span>Total: <strong id="amount-display"></strong> sats</span>
         </div>
       </div>
-      <p class="waiting">Waiting for payment<span class="dots"></span></p>
+      <p class="waiting">Waiting for payment<span class="dots"></span> <span id="countdown" class="countdown"></span></p>
     </section>
 
     <section id="state-broadcasting" class="hidden">
@@ -51,6 +51,14 @@
       <p>Your transaction has been submitted to the network.</p>
       <a id="mempool-link" href="#" target="_blank" rel="noopener">View on mempool.space</a>
       <button onclick="resetForm()">Bump Another</button>
+    </section>
+
+    <section id="state-expired" class="hidden">
+      <div class="expired-icon">&#9202;</div>
+      <h2>Invoice Expired</h2>
+      <p>The payment window has closed. Fee rates may have changed.</p>
+      <button onclick="resubmit()">Get Fresh Quote</button>
+      <button class="btn-secondary" onclick="resetForm()">Start Over</button>
     </section>
 
     <section id="state-error" class="hidden">

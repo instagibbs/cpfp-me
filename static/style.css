@@ -245,14 +245,40 @@ footer {
   line-height: 1.5;
 }
 
+.countdown {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.expired-icon {
+  font-size: 3rem;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  margin-top: 0.5rem;
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
 #state-broadcasting,
 #state-success,
-#state-error {
+#state-error,
+#state-expired {
   text-align: center;
 }
 
 #state-broadcasting p,
 #state-success p,
-#state-error p {
+#state-error p,
+#state-expired p {
   color: var(--text-muted);
 }

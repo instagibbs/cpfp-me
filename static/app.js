@@ -1,11 +1,15 @@
 /* global QRCode */
 
+const INVOICE_TTL_SECS = 60;
+
 let currentOrderId = null;
 let pollInterval = null;
+let countdownInterval = null;
+let expiresAt = null;
 
 function showState(name) {
   const states = [
-    "input", "invoice", "broadcasting", "success", "error",
+    "input", "invoice", "broadcasting", "success", "error", "expired",
   ];
   for (const s of states) {
     const el = document.getElementById("state-" + s);
@@ -62,8 +66,7 @@ async function submitTx() {
 
 function showInvoice(data) {
   document.getElementById("bolt11-text").textContent = data.bolt11;
-  document.getElementById("fee-rate-display").textContent =
-    data.fee_rate;
+  document.getElementById("fee-rate-display").textContent = data.fee_rate;
   document.getElementById("amount-display").textContent =
     data.amount_sat.toLocaleString();
 
@@ -83,8 +86,12 @@ function showInvoice(data) {
     qrContainer.textContent = "(QR library not loaded)";
   }
 
+  expiresAt = Date.now() + INVOICE_TTL_SECS * 1000;
+  updateCountdown();
+
   showState("invoice");
   startPolling();
+  startCountdown();
 }
 
 function startPolling() {
@@ -96,6 +103,30 @@ function stopPolling() {
   if (pollInterval) {
     clearInterval(pollInterval);
     pollInterval = null;
+  }
+}
+
+function startCountdown() {
+  if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+function stopCountdown() {
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+}
+
+function updateCountdown() {
+  const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  const el = document.getElementById("countdown");
+  if (el) el.textContent = remaining + "s";
+
+  if (remaining <= 0) {
+    stopPolling();
+    stopCountdown();
+    showState("expired");
   }
 }
 
@@ -112,12 +143,11 @@ async function checkStatus() {
 
     if (data.status === "broadcast") {
       stopPolling();
+      stopCountdown();
       showState("broadcasting");
       setTimeout(() => {
-        document.getElementById("mempool-link").href =
-          data.mempool_url;
-        document.getElementById("mempool-link").textContent =
-          data.mempool_url;
+        document.getElementById("mempool-link").href = data.mempool_url;
+        document.getElementById("mempool-link").textContent = data.mempool_url;
         showState("success");
       }, 1000);
       return;
@@ -125,6 +155,7 @@ async function checkStatus() {
 
     if (data.status === "failed") {
       stopPolling();
+      stopCountdown();
       document.getElementById("error-message").textContent =
         data.error || "Unknown error.";
       showState("error");
@@ -146,8 +177,19 @@ function copyBolt11() {
 
 function resetForm() {
   stopPolling();
+  stopCountdown();
   currentOrderId = null;
+  expiresAt = null;
   document.getElementById("raw-tx").value = "";
   clearInputError();
   showState("input");
+}
+
+function resubmit() {
+  stopPolling();
+  stopCountdown();
+  currentOrderId = null;
+  expiresAt = null;
+  showState("input");
+  submitTx();
 }

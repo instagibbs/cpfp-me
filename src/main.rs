@@ -51,6 +51,8 @@ async fn main() -> anyhow::Result<()> {
         orders: Arc::new(Mutex::new(HashMap::new())),
     };
 
+    cpfp_me::cleanup::spawn_cleanup_task(state.clone());
+
     let app = routes::router(state);
 
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
