@@ -31,15 +31,29 @@ impl IntoResponse for AppError {
         let (status, message) = match &self {
             Self::InvalidTx { .. } => (StatusCode::BAD_REQUEST, self.to_string()),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            Self::FeeEstimation(_)
-            | Self::Wallet(_)
-            | Self::Payment(_)
-            | Self::Broadcast(_)
-            | Self::Internal(_) => {
+            Self::FeeEstimation(_) => {
+                tracing::error!("{self}");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Fee estimation unavailable".into(),
+                )
+            }
+            Self::Payment(_) => {
+                tracing::error!("{self}");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Payment service unavailable".into(),
+                )
+            }
+            Self::Broadcast(_) => {
+                tracing::error!("{self}");
+                (StatusCode::BAD_GATEWAY, "Broadcast failed".into())
+            }
+            Self::Wallet(_) | Self::Internal(_) => {
                 tracing::error!("{self}");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
+                    "Internal server error".into(),
                 )
             }
         };
