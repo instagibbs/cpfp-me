@@ -69,18 +69,23 @@ async fn handle_submit(
         state.config.markup_percent,
     );
 
-    // Verify we can actually cover this fee before taking payment
-    if !state.wallet.can_cover_fee(total_fee)? {
-        return Err(AppError::AtCapacity(
-            "no wallet UTXOs available to fund this bump, try again later".into(),
-        ));
-    }
+    // Reserve a UTXO before taking payment. This prevents two
+    // concurrent requests from claiming the same UTXO.
+    // Reservation expires after 60s if payment doesn't arrive.
+    let reserved_utxo = state.wallet.reserve_utxo_for_fee(total_fee)?;
 
     let description = format!("cpfp.me: bump tx {}", parent.tx.compute_txid());
-    let invoice = state
+    let invoice = match state
         .payment
         .create_invoice(total_fee.to_sat(), &description)
-        .await?;
+        .await
+    {
+        Ok(inv) => inv,
+        Err(e) => {
+            state.wallet.release_reservation(&reserved_utxo);
+            return Err(e);
+        }
+    };
 
     let order_id = uuid::Uuid::new_v4().to_string();
     let response = SubmitResponse {
@@ -90,7 +95,7 @@ async fn handle_submit(
         fee_rate,
     };
 
-    let order = Order::new(&parent, invoice, total_fee, fee_rate);
+    let order = Order::new(&parent, invoice, total_fee, fee_rate, reserved_utxo);
 
     let mut orders = lock_orders(&state)?;
     orders.insert(order_id, order);
@@ -102,7 +107,6 @@ async fn handle_status(
     State(state): State<AppState>,
     Path(order_id): Path<String>,
 ) -> Result<Json<StatusResponse>, AppError> {
-    // Check current status
     let current_status = {
         let orders = lock_orders(&state)?;
         let order = orders
@@ -150,24 +154,21 @@ async fn handle_awaiting_payment(
     let payment_status = state.payment.check_payment(&payment_hash).await?;
 
     if payment_status == PaymentStatus::Paid {
-        // Mark as paid, then proceed to build + broadcast
-        {
-            let mut orders = state
-                .orders
-                .lock()
-                .map_err(|e| AppError::Internal(format!("orders lock poisoned: {e}")))?;
-            if let Some(order) = orders.get_mut(order_id) {
-                order.status = OrderStatus::Paid;
-            }
-        }
+        // Consume the reservation — we're about to spend the UTXO
+        let reserved_utxo = {
+            let mut orders = lock_orders(state)?;
+            let order = orders
+                .get_mut(order_id)
+                .ok_or_else(|| AppError::NotFound(order_id.to_string()))?;
+            order.status = OrderStatus::Paid;
+            order.reserved_utxo
+        };
+        state.wallet.consume_reservation(&reserved_utxo);
         return handle_paid(state, order_id).await;
     }
 
     // Still waiting
-    let orders = state
-        .orders
-        .lock()
-        .map_err(|e| AppError::Internal(format!("orders lock poisoned: {e}")))?;
+    let orders = lock_orders(state)?;
     let order = orders
         .get(order_id)
         .ok_or_else(|| AppError::NotFound(order_id.to_string()))?;

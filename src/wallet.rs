@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use bdk_esplora::esplora_client;
 use bdk_esplora::EsploraAsyncExt;
@@ -7,17 +9,20 @@ use bdk_wallet::keys::bip39::Mnemonic;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::Bip86;
 use bdk_wallet::{KeychainKind, PersistedWallet, Wallet};
+use bitcoin::{Amount, OutPoint};
 
 use crate::config::Config;
 use crate::error::AppError;
 
 const STOP_GAP: usize = 20;
 const PARALLEL_REQUESTS: usize = 5;
+const RESERVATION_TTL: Duration = Duration::from_secs(60);
 
 pub struct AppWallet {
     pub wallet: Mutex<PersistedWallet<Connection>>,
     pub db: Mutex<Connection>,
     esplora: esplora_client::AsyncClient,
+    reservations: Mutex<HashMap<OutPoint, Instant>>,
 }
 
 impl AppWallet {
@@ -70,6 +75,7 @@ impl AppWallet {
             wallet: Mutex::new(wallet),
             db: Mutex::new(conn),
             esplora,
+            reservations: Mutex::new(HashMap::new()),
         })
     }
 
@@ -123,14 +129,61 @@ impl AppWallet {
         Ok(wallet.balance().total().to_sat())
     }
 
-    /// Returns true if the wallet has a UTXO large enough to cover
-    /// the given fee amount.
-    pub fn can_cover_fee(&self, fee: bitcoin::Amount) -> Result<bool, AppError> {
+    /// Tries to reserve a UTXO large enough to cover `fee`.
+    ///
+    /// Returns the reserved outpoint, or an error if no unreserved
+    /// UTXO is available. Reservations expire after 60 seconds.
+    pub fn reserve_utxo_for_fee(&self, fee: Amount) -> Result<OutPoint, AppError> {
         let wallet = self
             .wallet
             .lock()
             .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
-        let has_sufficient = wallet.list_unspent().any(|u| u.txout.value >= fee);
-        Ok(has_sufficient)
+        let mut reservations = self
+            .reservations
+            .lock()
+            .map_err(|e| AppError::Wallet(format!("reservations lock poisoned: {e}")))?;
+
+        // Expire stale reservations
+        let now = Instant::now();
+        reservations.retain(|_, expires_at| *expires_at > now);
+
+        // Find unreserved UTXO large enough
+        let utxo = wallet
+            .list_unspent()
+            .find(|u| u.txout.value >= fee && !reservations.contains_key(&u.outpoint));
+
+        match utxo {
+            Some(u) => {
+                let outpoint = u.outpoint;
+                reservations.insert(outpoint, now + RESERVATION_TTL);
+                tracing::debug!(
+                    outpoint = %outpoint,
+                    ttl_secs = RESERVATION_TTL.as_secs(),
+                    "reserved UTXO"
+                );
+                Ok(outpoint)
+            }
+            None => Err(AppError::AtCapacity(
+                "no wallet UTXOs available to fund this bump, try again later".into(),
+            )),
+        }
+    }
+
+    /// Releases a reservation (e.g. after payment timeout).
+    pub fn release_reservation(&self, outpoint: &OutPoint) {
+        if let Ok(mut reservations) = self.reservations.lock() {
+            if reservations.remove(outpoint).is_some() {
+                tracing::debug!(outpoint = %outpoint, "released UTXO reservation");
+            }
+        }
+    }
+
+    /// Consumes a reservation after successful payment.
+    /// The UTXO will be spent in the child tx, so no need to hold
+    /// the reservation anymore.
+    pub fn consume_reservation(&self, outpoint: &OutPoint) {
+        if let Ok(mut reservations) = self.reservations.lock() {
+            reservations.remove(outpoint);
+        }
     }
 }

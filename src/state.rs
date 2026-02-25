@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use bitcoin::Amount;
+use bitcoin::{Amount, OutPoint};
 
 use crate::config::Config;
 use crate::payment::{Invoice, PhoenixdClient};
@@ -22,6 +22,7 @@ pub struct Order {
     pub invoice: Invoice,
     pub total_fee: Amount,
     pub fee_rate: u64,
+    pub reserved_utxo: OutPoint,
     pub status: OrderStatus,
 }
 
@@ -39,12 +40,14 @@ impl Order {
         invoice: Invoice,
         total_fee: Amount,
         fee_rate: u64,
+        reserved_utxo: OutPoint,
     ) -> Self {
         Self {
             parent_raw_hex: parent.raw_hex.clone(),
             total_fee,
             fee_rate,
             invoice,
+            reserved_utxo,
             status: OrderStatus::AwaitingPayment,
         }
     }
