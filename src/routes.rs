@@ -12,6 +12,7 @@ use crate::fees;
 use crate::payment::PaymentStatus;
 use crate::state::{AppState, Order, OrderStatus};
 use crate::validate;
+use crate::wallet::RESERVATION_TTL;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -75,9 +76,11 @@ async fn handle_submit(
     let reserved_utxo = state.wallet.reserve_utxo_for_fee(total_fee)?;
 
     let description = format!("cpfp.me: bump tx {}", parent.tx.compute_txid());
+    // Invoice expiry matches UTXO reservation TTL so the invoice
+    // becomes unpayable before the reservation is released.
     let invoice = match state
         .payment
-        .create_invoice(total_fee.to_sat(), &description)
+        .create_invoice(total_fee.to_sat(), &description, RESERVATION_TTL.as_secs())
         .await
     {
         Ok(inv) => inv,

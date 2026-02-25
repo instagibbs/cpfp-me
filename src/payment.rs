@@ -47,6 +47,7 @@ impl PhoenixdClient {
         &self,
         amount_sat: u64,
         description: &str,
+        expiry_secs: u64,
     ) -> Result<Invoice, AppError> {
         let url = format!("{}/createinvoice", self.base_url);
         let response: CreateInvoiceResponse = self
@@ -56,6 +57,7 @@ impl PhoenixdClient {
             .form(&[
                 ("amountSat", amount_sat.to_string()),
                 ("description", description.to_string()),
+                ("expirySeconds", expiry_secs.to_string()),
             ])
             .send()
             .await

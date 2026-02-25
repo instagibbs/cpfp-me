@@ -16,7 +16,7 @@ use crate::error::AppError;
 
 const STOP_GAP: usize = 20;
 const PARALLEL_REQUESTS: usize = 5;
-const RESERVATION_TTL: Duration = Duration::from_secs(60);
+pub const RESERVATION_TTL: Duration = Duration::from_secs(60);
 
 pub struct AppWallet {
     pub wallet: Mutex<PersistedWallet<Connection>>,
