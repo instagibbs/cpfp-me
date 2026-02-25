@@ -19,6 +19,7 @@ services:
       - "3000:3000"
     environment:
       - CPFP_MNEMONIC
+      - CPFP_PHOENIXD_PASSWORD
     volumes:
       - ./config.toml:/app/config.toml:ro
       - cpfp_data:/app/data

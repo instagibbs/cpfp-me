@@ -14,10 +14,11 @@ pub struct Config {
     pub utxo_target_count: u32,
     pub wallet_db_path: PathBuf,
     pub phoenixd_url: String,
-    pub phoenixd_password: String,
     pub mempool_api_url: String,
     #[serde(skip)]
     pub mnemonic: String,
+    #[serde(skip)]
+    pub phoenixd_password: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,13 +49,8 @@ impl Config {
         let mut config: Self = toml::from_str(&contents)
             .map_err(|e| AppError::Internal(format!("Failed to parse config file: {e}")))?;
 
-        config.mnemonic = std::env::var("CPFP_MNEMONIC").map_err(|_| {
-            AppError::Internal(
-                "CPFP_MNEMONIC environment variable not set. \
-                 Export it with your 12 or 24 word BIP39 mnemonic."
-                    .into(),
-            )
-        })?;
+        config.mnemonic = read_env("CPFP_MNEMONIC", "12 or 24 word BIP39 mnemonic")?;
+        config.phoenixd_password = read_env("CPFP_PHOENIXD_PASSWORD", "phoenixd HTTP password")?;
 
         config.validate()?;
         Ok(config)
@@ -83,4 +79,12 @@ impl Config {
     pub fn mempool_url_for_tx(&self, txid: &str) -> String {
         format!("{}/tx/{txid}", self.mempool_api_url)
     }
+}
+
+fn read_env(var: &str, description: &str) -> Result<String, AppError> {
+    std::env::var(var).map_err(|_| {
+        AppError::Internal(format!(
+            "{var} environment variable not set. Export it with your {description}."
+        ))
+    })
 }

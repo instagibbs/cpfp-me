@@ -18,9 +18,10 @@ wallet_db_path = "./data/wallet.db"
 
 # Phoenixd Lightning node (for receiving payments)
 # Run with: phoenixd --chain=testnet --agree-to-terms-of-service
-# Password is in ~/.phoenix/phoenix.conf after first run
+# Password is provided via CPFP_PHOENIXD_PASSWORD env var.
+# Find it in ~/.phoenix/phoenix.conf after first run.
+# export CPFP_PHOENIXD_PASSWORD="your-phoenixd-http-password"
 phoenixd_url = "http://127.0.0.1:9740"
-phoenixd_password = "your-phoenixd-http-password"
 
 # mempool.space API base URL
 # Mainnet: https://mempool.space
