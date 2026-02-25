@@ -2,8 +2,10 @@ use std::sync::Mutex;
 
 use bdk_esplora::esplora_client;
 use bdk_esplora::EsploraAsyncExt;
-use bdk_wallet::bitcoin::Network;
+use bdk_wallet::bitcoin::bip32::Xpriv;
+use bdk_wallet::keys::bip39::Mnemonic;
 use bdk_wallet::rusqlite::Connection;
+use bdk_wallet::template::Bip86;
 use bdk_wallet::{KeychainKind, PersistedWallet, Wallet};
 
 use crate::config::Config;
@@ -21,10 +23,14 @@ pub struct AppWallet {
 impl AppWallet {
     pub fn new(config: &Config) -> Result<Self, AppError> {
         let network = config.network.to_bitcoin_network();
-        let mnemonic = bdk_wallet::keys::bip39::Mnemonic::parse(&config.mnemonic)
+        let mnemonic = Mnemonic::parse(&config.mnemonic)
             .map_err(|e| AppError::Wallet(format!("invalid mnemonic: {e}")))?;
 
-        let (descriptor, change_descriptor) = descriptors_from_mnemonic(&mnemonic, network);
+        let xpriv = Xpriv::new_master(network, &mnemonic.to_seed(""))
+            .map_err(|e| AppError::Wallet(format!("failed to derive master key: {e}")))?;
+
+        let external = Bip86(xpriv, KeychainKind::External);
+        let internal = Bip86(xpriv, KeychainKind::Internal);
 
         let db_path = &config.wallet_db_path;
         if let Some(parent) = db_path.parent() {
@@ -35,15 +41,24 @@ impl AppWallet {
         let mut conn = Connection::open(db_path)
             .map_err(|e| AppError::Wallet(format!("failed to open wallet db: {e}")))?;
 
-        let has_db = db_path.exists()
+        let has_existing_db = db_path.exists()
             && std::fs::metadata(db_path)
                 .map(|m| m.len() > 0)
                 .unwrap_or(false);
 
-        let wallet = if has_db {
-            try_load_or_create(&descriptor, &change_descriptor, network, &mut conn)?
+        let wallet = if has_existing_db {
+            match Wallet::load().load_wallet(&mut conn) {
+                Ok(Some(w)) => w,
+                Ok(None) | Err(_) => Wallet::create(external, internal)
+                    .network(network)
+                    .create_wallet(&mut conn)
+                    .map_err(|e| AppError::Wallet(format!("failed to create wallet: {e}")))?,
+            }
         } else {
-            create_wallet(descriptor, change_descriptor, network, &mut conn)?
+            Wallet::create(external, internal)
+                .network(network)
+                .create_wallet(&mut conn)
+                .map_err(|e| AppError::Wallet(format!("failed to create wallet: {e}")))?
         };
 
         let esplora_url = format!("{}/api", config.mempool_api_url);
@@ -107,50 +122,4 @@ impl AppWallet {
             .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
         Ok(wallet.balance().total().to_sat())
     }
-}
-
-fn try_load_or_create(
-    descriptor: &str,
-    change_descriptor: &str,
-    network: Network,
-    conn: &mut Connection,
-) -> Result<PersistedWallet<Connection>, AppError> {
-    match Wallet::load()
-        .descriptor(KeychainKind::External, Some(descriptor.to_string()))
-        .descriptor(KeychainKind::Internal, Some(change_descriptor.to_string()))
-        .load_wallet(conn)
-    {
-        Ok(Some(w)) => Ok(w),
-        Ok(None) | Err(_) => create_wallet(
-            descriptor.to_string(),
-            change_descriptor.to_string(),
-            network,
-            conn,
-        ),
-    }
-}
-
-fn create_wallet(
-    descriptor: String,
-    change_descriptor: String,
-    network: Network,
-    conn: &mut Connection,
-) -> Result<PersistedWallet<Connection>, AppError> {
-    Wallet::create(descriptor, change_descriptor)
-        .network(network)
-        .create_wallet(conn)
-        .map_err(|e| AppError::Wallet(format!("failed to create wallet: {e}")))
-}
-
-fn descriptors_from_mnemonic(
-    mnemonic: &bdk_wallet::keys::bip39::Mnemonic,
-    network: Network,
-) -> (String, String) {
-    let path = match network {
-        Network::Bitcoin => "86'/0'/0'",
-        _ => "86'/1'/0'",
-    };
-    let descriptor = format!("tr([00000000/{path}]{mnemonic}/{path}/0/*)");
-    let change_descriptor = format!("tr([00000000/{path}]{mnemonic}/{path}/1/*)");
-    (descriptor, change_descriptor)
 }
