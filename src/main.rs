@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use cpfp_me::config;
+use cpfp_me::demo::DemoWallet;
 use cpfp_me::payment::PhoenixdClient;
 use cpfp_me::routes;
 use cpfp_me::state::AppState;
@@ -22,6 +23,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::load(&config_path)?;
     let listen_addr = config.listen_addr;
+    let network = config.network.to_bitcoin_network();
 
     tracing::info!(
         network = ?config.network,
@@ -43,18 +45,9 @@ async fn main() -> anyhow::Result<()> {
         config.phoenixd_password.clone(),
     );
 
-    let test_wallet = config
-        .test_mnemonic
-        .as_ref()
-        .map(|m| {
-            let network = config.network.to_bitcoin_network();
-            cpfp_me::test_wallet::TestWallet::new(m, network).map(Arc::new)
-        })
-        .transpose()?;
-
-    if test_wallet.is_some() {
-        tracing::info!("test wallet configured");
-    }
+    let demo_wallet = DemoWallet::new(&config.mnemonic, network)?;
+    let demo_addr = demo_wallet.deposit_address()?;
+    tracing::info!(address = %demo_addr, "demo wallet ready (account 1)");
 
     let state = AppState {
         config: Arc::new(config),
@@ -62,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
         wallet: Arc::new(app_wallet),
         payment: Arc::new(payment),
         orders: Arc::new(Mutex::new(HashMap::new())),
-        test_wallet,
+        demo_wallet: Arc::new(demo_wallet),
     };
 
     cpfp_me::cleanup::spawn_cleanup_task(state.clone());

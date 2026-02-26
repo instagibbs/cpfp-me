@@ -20,13 +20,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/status/{order_id}", get(handle_status))
         .route("/api/admin/info", get(handle_admin_info));
 
+    router = router.route("/api/demo-parent", get(handle_demo_parent));
+
     if state.config.testing {
-        tracing::warn!(
-            "testing mode enabled: /api/admin/fakepay and /api/admin/test-parent are available"
-        );
-        router = router
-            .route("/api/admin/fakepay/{order_id}", post(handle_fakepay))
-            .route("/api/admin/test-parent", post(handle_test_parent));
+        tracing::warn!("testing mode enabled: /api/admin/fakepay is available");
+        router = router.route("/api/admin/fakepay/{order_id}", post(handle_fakepay));
     }
 
     router
@@ -369,35 +367,27 @@ async fn handle_admin_info(
     })))
 }
 
-async fn handle_test_parent(
+async fn handle_demo_parent(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let test_wallet = state.test_wallet.as_ref().ok_or_else(|| {
-        AppError::Internal("test wallet not configured (set CPFP_TEST_MNEMONIC)".into())
-    })?;
-
-    // Sync test wallet before building
     let esplora_url = format!("{}/api", state.config.mempool_api_url);
     let esplora = bdk_esplora::esplora_client::Builder::new(&esplora_url)
         .build_async()
         .map_err(|e| AppError::Internal(format!("failed to build esplora client: {e}")))?;
-    test_wallet.sync(&esplora).await?;
+    state.demo_wallet.sync(&esplora).await?;
 
-    let parent = test_wallet.build_test_parent()?;
-    let info = test_wallet.info()?;
+    let parent = state.demo_wallet.build_parent()?;
 
     tracing::info!(
         txid = %parent.txid,
         value_sats = parent.value_sats,
-        "built test parent"
+        "built demo parent"
     );
 
     Ok(Json(serde_json::json!({
         "raw_tx": parent.hex,
         "txid": parent.txid,
         "value_sats": parent.value_sats,
-        "test_wallet_address": info.address,
-        "test_wallet_balance": test_wallet.balance()?,
     })))
 }
 

@@ -5,8 +5,8 @@ use std::time::Instant;
 use bitcoin::{Amount, OutPoint};
 
 use crate::config::Config;
+use crate::demo::DemoWallet;
 use crate::payment::{Invoice, PhoenixdClient};
-use crate::test_wallet::TestWallet;
 use crate::validate::ValidatedParent;
 use crate::wallet::AppWallet;
 
@@ -17,7 +17,7 @@ pub struct AppState {
     pub wallet: Arc<AppWallet>,
     pub payment: Arc<PhoenixdClient>,
     pub orders: Arc<Mutex<HashMap<String, Order>>>,
-    pub test_wallet: Option<Arc<TestWallet>>,
+    pub demo_wallet: Arc<DemoWallet>,
 }
 
 pub struct Order {

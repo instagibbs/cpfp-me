@@ -193,3 +193,25 @@ function resubmit() {
   showState("input");
   submitTx();
 }
+
+async function loadDemoParent() {
+  clearInputError();
+  const btn = document.querySelector(".btn-secondary");
+  btn.disabled = true;
+  btn.textContent = "Loading...";
+
+  try {
+    const resp = await fetch("/api/demo-parent");
+    const data = await resp.json();
+    if (!resp.ok) {
+      showInputError(data.error || "Failed to load demo transaction.");
+      return;
+    }
+    document.getElementById("raw-tx").value = data.raw_tx;
+  } catch (err) {
+    showInputError("Network error: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Try with demo tx";
+  }
+}
