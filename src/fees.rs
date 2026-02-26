@@ -53,6 +53,7 @@ pub async fn fetch_fee_rate(client: &reqwest::Client, mempool_url: &str) -> Resu
     }
 
     // Esplora returns float sat/vB, round up
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Ok(rate.ceil() as u64)
 }
 
