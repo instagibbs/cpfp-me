@@ -120,9 +120,8 @@ impl DemoWallet {
                 )
             })
             .ok_or_else(|| {
-                AppError::Internal(
-                    "demo wallet has no confirmed UTXOs — previous bump pending confirmation"
-                        .into(),
+                AppError::AtCapacity(
+                    "demo transaction pending confirmation — try again after next block".into(),
                 )
             })?;
 
