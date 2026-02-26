@@ -54,6 +54,7 @@ impl AppWallet {
             match Wallet::load()
                 .descriptor(KeychainKind::External, Some(external.clone()))
                 .descriptor(KeychainKind::Internal, Some(internal.clone()))
+                .extract_keys()
                 .load_wallet(&mut conn)
             {
                 Ok(Some(w)) => w,
