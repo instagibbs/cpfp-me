@@ -246,7 +246,7 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
     // blocking on slow Esplora responses after user already paid.
     // The wallet's UTXO state is maintained by BDK as we build txs.
 
-    let built_child = build_and_persist(state, &parent, mining_fee)?;
+    let built_child = build_child(state, &parent, mining_fee)?;
     let parent_txid = parent.tx.compute_txid().to_string();
 
     let result = broadcast::submit_package(
@@ -259,6 +259,12 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
 
     match result {
         Ok(_) => {
+            // Only persist wallet state after successful broadcast.
+            // This prevents phantom change outputs from failed broadcasts
+            // being saved to the DB and corrupting future UTXO selection.
+            if let Err(e) = persist_wallet(state) {
+                tracing::error!(error = %e, "failed to persist wallet after broadcast");
+            }
             tracing::info!(
                 parent_txid = %parent_txid,
                 parent_hex = %parent.raw_hex,
@@ -326,7 +332,7 @@ fn get_order_details(state: &AppState, order_id: &str) -> Result<(String, Amount
     Ok((order.parent_raw_hex.clone(), order.mining_fee))
 }
 
-fn build_and_persist(
+fn build_child(
     state: &AppState,
     parent: &validate::ValidatedParent,
     mining_fee: Amount,
@@ -337,7 +343,15 @@ fn build_and_persist(
         .lock()
         .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
     let utxo_target = state.config.utxo_target_count;
-    let result = child::build_child_tx(&mut wallet, parent, mining_fee, utxo_target)?;
+    child::build_child_tx(&mut wallet, parent, mining_fee, utxo_target)
+}
+
+fn persist_wallet(state: &AppState) -> Result<(), AppError> {
+    let mut wallet = state
+        .wallet
+        .wallet
+        .lock()
+        .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
     let mut db = state
         .wallet
         .db
@@ -346,7 +360,7 @@ fn build_and_persist(
     wallet
         .persist(&mut *db)
         .map_err(|e| AppError::Wallet(format!("failed to persist wallet: {e}")))?;
-    Ok(result)
+    Ok(())
 }
 
 /// Test-only: simulate payment received for an order.
