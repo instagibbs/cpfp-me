@@ -261,7 +261,9 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
         Ok(_) => {
             tracing::info!(
                 parent_txid = %parent_txid,
+                parent_hex = %parent.raw_hex,
                 child_txid = %built_child.tx.compute_txid(),
+                child_hex = %built_child.hex,
                 fee = %mining_fee,
                 "package broadcast successful"
             );
@@ -286,6 +288,9 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
             let reason = e.to_string();
             tracing::error!(
                 parent_txid = %parent_txid,
+                parent_hex = %parent.raw_hex,
+                child_txid = %built_child.tx.compute_txid(),
+                child_hex = %built_child.hex,
                 error = %reason,
                 "package broadcast failed"
             );
