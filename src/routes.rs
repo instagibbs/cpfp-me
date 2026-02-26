@@ -336,8 +336,7 @@ fn build_and_persist(
         .wallet
         .lock()
         .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
-    let utxo_target = state.config.utxo_target_count;
-    let result = child::build_child_tx(&mut wallet, parent, mining_fee, utxo_target)?;
+    let result = child::build_child_tx(&mut wallet, parent, mining_fee)?;
     let mut db = state
         .wallet
         .db

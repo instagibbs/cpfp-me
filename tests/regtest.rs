@@ -134,20 +134,21 @@ fn child_tx_has_correct_structure() {
     };
     let rpc = &bitcoind.client;
 
-    // Fund our BDK hot wallet
+    // Mine blocks to mature coinbase, mostly to bitcoind's wallet
+    let btc_addr = rpc.get_new_address(None, None).unwrap().assume_checked();
+    rpc.generate_to_address(100, &btc_addr).unwrap();
+
+    // Fund our BDK wallet with just 1 block (1 UTXO)
     let mut wallet = create_test_wallet();
     let addr = wallet.reveal_next_address(bdk_wallet::KeychainKind::External);
-    rpc.generate_to_address(101, &addr.address).unwrap();
+    rpc.generate_to_address(1, &addr.address).unwrap();
+
+    // Mine more to mature our coinbase
+    rpc.generate_to_address(100, &btc_addr).unwrap();
     sync_wallet(&mut wallet, rpc);
 
     let balance = wallet.balance().total();
     assert!(balance > Amount::ZERO, "wallet should be funded");
-
-    // Create a TRUC parent from bitcoind's wallet
-    // First, fund bitcoind's wallet too
-    let btc_addr = rpc.get_new_address(None, None).unwrap().assume_checked();
-    rpc.generate_to_address(101, &btc_addr).unwrap();
-    sync_wallet(&mut wallet, rpc);
 
     let parent_tx = create_truc_parent(rpc);
     let parent_hex = encode_tx_hex(&parent_tx);
@@ -158,7 +159,7 @@ fn child_tx_has_correct_structure() {
 
     // Build the CPFP child
     let total_fee = Amount::from_sat(500);
-    let child = build_child_tx(&mut wallet, &parent, total_fee, 10).unwrap();
+    let child = build_child_tx(&mut wallet, &parent, total_fee).unwrap();
 
     // -- Verify child structure --
     assert_eq!(child.tx.version, Version(3), "child must be TRUC v3");
@@ -204,14 +205,17 @@ fn package_accepted_by_bitcoind() {
     };
     let rpc = &bitcoind.client;
 
-    // Fund our wallet
+    // Mine blocks to mature coinbase, mostly to bitcoind's wallet
+    let btc_addr = rpc.get_new_address(None, None).unwrap().assume_checked();
+    rpc.generate_to_address(100, &btc_addr).unwrap();
+
+    // Fund our BDK wallet with just 1 block (1 UTXO)
     let mut wallet = create_test_wallet();
     let addr = wallet.reveal_next_address(bdk_wallet::KeychainKind::External);
-    rpc.generate_to_address(101, &addr.address).unwrap();
+    rpc.generate_to_address(1, &addr.address).unwrap();
 
-    // Fund bitcoind's wallet for the parent
-    let btc_addr = rpc.get_new_address(None, None).unwrap().assume_checked();
-    rpc.generate_to_address(101, &btc_addr).unwrap();
+    // Mine more to mature our coinbase + fund bitcoind's wallet
+    rpc.generate_to_address(100, &btc_addr).unwrap();
     sync_wallet(&mut wallet, rpc);
 
     // Build parent + child
@@ -220,7 +224,7 @@ fn package_accepted_by_bitcoind() {
     let parent = validate_parent_tx(&parent_hex).unwrap();
 
     let total_fee = Amount::from_sat(1000);
-    let child = build_child_tx(&mut wallet, &parent, total_fee, 10).unwrap();
+    let child = build_child_tx(&mut wallet, &parent, total_fee).unwrap();
 
     // Submit as package via submitpackage RPC
     let result: serde_json::Value = rpc
