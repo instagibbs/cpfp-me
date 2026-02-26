@@ -11,6 +11,8 @@
     clippy::print_stderr
 )]
 
+use std::path::PathBuf;
+
 use bitcoin::absolute::LockTime;
 use bitcoin::consensus::Encodable;
 use bitcoin::transaction::Version;
@@ -256,4 +258,133 @@ fn package_accepted_by_bitcoind() {
         let confirmations = info["confirmations"].as_i64().unwrap_or(0);
         assert!(confirmations > 0, "{label} should be confirmed: {info}");
     }
+}
+
+/// Simulates a server restart: create wallet, build child, mine it,
+/// reload wallet from SQLite, sync, build second child spending the
+/// change output. This reproduces the mainnet bug where the wallet
+/// can't finalize its own change outputs after reload.
+#[test]
+fn signing_works_after_wallet_reload() {
+    let Some(bitcoind) = start_bitcoind() else {
+        eprintln!("SKIP: bitcoind not found, set BITCOIND_EXE");
+        return;
+    };
+    let rpc = &bitcoind.client;
+
+    let mnemonic = "abandon abandon abandon abandon abandon abandon \
+         abandon abandon abandon abandon abandon about";
+    let xpriv = bitcoin::bip32::Xpriv::new_master(
+        Network::Regtest,
+        &bdk_wallet::keys::bip39::Mnemonic::parse(mnemonic)
+            .unwrap()
+            .to_seed(""),
+    )
+    .unwrap();
+    let external = bdk_wallet::template::Bip86(xpriv, bdk_wallet::KeychainKind::External);
+    let internal = bdk_wallet::template::Bip86(xpriv, bdk_wallet::KeychainKind::Internal);
+
+    let db_path = PathBuf::from("/tmp/cpfp-me-test-wallet.sqlite");
+    let _ = std::fs::remove_file(&db_path);
+
+    // --- Session 1: create wallet, fund, build first child ---
+    {
+        let mut conn = bdk_wallet::rusqlite::Connection::open(&db_path).unwrap();
+        let mut wallet = bdk_wallet::Wallet::create(external.clone(), internal.clone())
+            .network(Network::Regtest)
+            .create_wallet(&mut conn)
+            .unwrap();
+
+        // Mine blocks to mature coinbase, then fund our wallet with 1 block
+        let btc_addr = rpc.get_new_address(None, None).unwrap().assume_checked();
+        rpc.generate_to_address(100, &btc_addr).unwrap();
+        let addr = wallet.reveal_next_address(bdk_wallet::KeychainKind::External);
+        rpc.generate_to_address(1, &addr.address).unwrap();
+        rpc.generate_to_address(100, &btc_addr).unwrap();
+        sync_wallet(&mut wallet, rpc);
+
+        assert!(
+            wallet.balance().total() > Amount::ZERO,
+            "wallet should be funded"
+        );
+
+        // Build first child
+        let parent_tx = create_truc_parent(rpc);
+        let parent_hex = encode_tx_hex(&parent_tx);
+        let parent = validate_parent_tx(&parent_hex).unwrap();
+        let child1 = build_child_tx(&mut wallet, &parent, Amount::from_sat(500), 10).unwrap();
+
+        // Submit package and mine
+        let result: serde_json::Value = rpc
+            .call(
+                "submitpackage",
+                &[serde_json::json!([parent_hex, child1.hex])],
+            )
+            .unwrap();
+        assert_eq!(
+            result["package_msg"].as_str().unwrap_or(""),
+            "success",
+            "first package should succeed: {result}"
+        );
+        rpc.generate_to_address(1, &btc_addr).unwrap();
+
+        // Persist wallet state
+        wallet.persist(&mut conn).unwrap();
+    }
+
+    // --- Session 2: reload wallet from DB, build second child ---
+    {
+        let mut conn = bdk_wallet::rusqlite::Connection::open(&db_path).unwrap();
+        let mut wallet = bdk_wallet::Wallet::load()
+            .descriptor(bdk_wallet::KeychainKind::External, Some(external.clone()))
+            .descriptor(bdk_wallet::KeychainKind::Internal, Some(internal.clone()))
+            .load_wallet(&mut conn)
+            .unwrap()
+            .expect("wallet should exist in db");
+
+        // Sync to discover the confirmed child's change outputs
+        sync_wallet(&mut wallet, rpc);
+
+        let utxo_count = wallet.list_unspent().count();
+        let balance = wallet.balance().total();
+        eprintln!("Session 2: {utxo_count} UTXOs, {balance} balance");
+        assert!(
+            balance > Amount::ZERO,
+            "wallet should have balance after reload"
+        );
+
+        // Build second child spending the change output
+        let parent_tx2 = create_truc_parent(rpc);
+        let parent_hex2 = encode_tx_hex(&parent_tx2);
+        let parent2 = validate_parent_tx(&parent_hex2).unwrap();
+        let child2 = build_child_tx(&mut wallet, &parent2, Amount::from_sat(500), 10).unwrap();
+
+        // Verify child2 has valid witnesses on wallet inputs
+        let p2a_outpoint = OutPoint::new(parent_tx2.compute_txid(), parent2.p2a_vout);
+        for (i, input) in child2.tx.input.iter().enumerate() {
+            let is_p2a = input.previous_output == p2a_outpoint;
+            if !is_p2a {
+                assert!(
+                    !input.witness.is_empty(),
+                    "wallet input {i} ({}) should have witness data after reload",
+                    input.previous_output
+                );
+            }
+        }
+
+        // Submit and verify it's accepted
+        let result: serde_json::Value = rpc
+            .call(
+                "submitpackage",
+                &[serde_json::json!([parent_hex2, child2.hex])],
+            )
+            .unwrap();
+        assert_eq!(
+            result["package_msg"].as_str().unwrap_or(""),
+            "success",
+            "second package (after reload) should succeed: {result}"
+        );
+    }
+
+    let _ = std::fs::remove_file(&db_path);
 }
