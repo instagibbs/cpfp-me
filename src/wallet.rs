@@ -195,4 +195,76 @@ impl AppWallet {
             reservations.remove(outpoint);
         }
     }
+
+    /// Builds a self-spend transaction that consolidates unreserved
+    /// wallet UTXOs into a single output.
+    ///
+    /// Returns the signed transaction hex, or None if there are fewer
+    /// than 2 unreserved UTXOs.
+    pub fn build_consolidation_tx(&self) -> Result<Option<String>, AppError> {
+        let mut wallet = self
+            .wallet
+            .lock()
+            .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
+        let reservations = self
+            .reservations
+            .lock()
+            .map_err(|e| AppError::Wallet(format!("reservations lock poisoned: {e}")))?;
+
+        let now = Instant::now();
+        let unreserved: Vec<_> = wallet
+            .list_unspent()
+            .filter(|u| reservations.get(&u.outpoint).is_none_or(|exp| *exp <= now))
+            .collect();
+
+        if unreserved.len() < 2 {
+            return Ok(None);
+        }
+
+        let utxo_count = unreserved.len();
+        let addr = wallet.reveal_next_address(KeychainKind::Internal).address;
+
+        let mut builder = wallet.build_tx();
+        for utxo in &unreserved {
+            builder
+                .add_utxo(utxo.outpoint)
+                .map_err(|e| AppError::Wallet(format!("failed to add utxo: {e}")))?;
+        }
+        builder
+            .manually_selected_only()
+            .drain_to(addr.script_pubkey());
+
+        let mut psbt = builder
+            .finish()
+            .map_err(|e| AppError::Wallet(format!("failed to build consolidation tx: {e}")))?;
+
+        #[expect(deprecated)]
+        wallet
+            .sign(&mut psbt, bdk_wallet::SignOptions::default())
+            .map_err(|e| AppError::Wallet(format!("failed to sign consolidation tx: {e}")))?;
+
+        let tx = psbt
+            .extract_tx()
+            .map_err(|e| AppError::Wallet(format!("failed to extract consolidation tx: {e}")))?;
+
+        let mut buf = Vec::new();
+        bitcoin::consensus::Encodable::consensus_encode(&tx, &mut buf)
+            .map_err(|e| AppError::Wallet(format!("failed to encode consolidation tx: {e}")))?;
+
+        let mut db = self
+            .db
+            .lock()
+            .map_err(|e| AppError::Wallet(format!("db lock poisoned: {e}")))?;
+        wallet
+            .persist(&mut *db)
+            .map_err(|e| AppError::Wallet(format!("failed to persist wallet: {e}")))?;
+
+        tracing::info!(
+            utxos_merged = utxo_count,
+            txid = %tx.compute_txid(),
+            "built consolidation tx"
+        );
+
+        Ok(Some(hex::encode(buf)))
+    }
 }

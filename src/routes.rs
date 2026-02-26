@@ -81,7 +81,15 @@ async fn handle_submit(
     // Reserve a UTXO before taking payment. This prevents two
     // concurrent requests from claiming the same UTXO.
     // Reservation expires after 60s if payment doesn't arrive.
-    let reserved_utxo = state.wallet.reserve_utxo_for_fee(total_fee)?;
+    let reserved_utxo = match state.wallet.reserve_utxo_for_fee(total_fee) {
+        Ok(outpoint) => outpoint,
+        Err(e) => {
+            // No single UTXO is large enough — trigger background
+            // consolidation so the next attempt has a bigger UTXO.
+            trigger_consolidation(state.clone());
+            return Err(e);
+        }
+    };
 
     let description = format!("cpfp.me: bump tx {}", parent.tx.compute_txid());
     // Invoice expiry matches UTXO reservation TTL so the invoice
@@ -356,4 +364,42 @@ fn lock_orders(
         .orders
         .lock()
         .map_err(|e| AppError::Internal(format!("orders lock poisoned: {e}")))
+}
+
+/// Spawns a background task to consolidate wallet UTXOs into one.
+/// Fires and forgets — errors are logged, not returned.
+fn trigger_consolidation(state: AppState) {
+    tokio::spawn(async move {
+        let tx_hex = match state.wallet.build_consolidation_tx() {
+            Ok(Some(hex)) => hex,
+            Ok(None) => {
+                tracing::info!("consolidation skipped: fewer than 2 UTXOs");
+                return;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "failed to build consolidation tx");
+                return;
+            }
+        };
+
+        let url = format!("{}/api/tx", state.config.mempool_api_url);
+        match state.http_client.post(&url).body(tx_hex).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                if status.is_success() {
+                    tracing::info!(txid = %body, "consolidation tx broadcast");
+                } else {
+                    tracing::error!(
+                        http_status = %status,
+                        response = %body,
+                        "consolidation broadcast failed"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "consolidation broadcast request failed");
+            }
+        }
+    });
 }
