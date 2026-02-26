@@ -52,7 +52,11 @@ impl AppWallet {
                 .unwrap_or(false);
 
         let wallet = if has_existing_db {
-            match Wallet::load().load_wallet(&mut conn) {
+            match Wallet::load()
+                .descriptor(KeychainKind::External, Some(external.clone()))
+                .descriptor(KeychainKind::Internal, Some(internal.clone()))
+                .load_wallet(&mut conn)
+            {
                 Ok(Some(w)) => w,
                 Ok(None) | Err(_) => Wallet::create(external, internal)
                     .network(network)

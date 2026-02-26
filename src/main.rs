@@ -34,13 +34,15 @@ async fn main() -> anyhow::Result<()> {
 
     let app_wallet = AppWallet::new(&config)?;
 
+    // Reveal first address so sync has something to scan
+    let deposit_addr = app_wallet.next_address()?;
+    tracing::info!(address = %deposit_addr, "deposit address");
+
+    tracing::info!("syncing wallet...");
+    app_wallet.sync().await?;
     let balance = app_wallet.balance()?;
     let utxo_count = app_wallet.utxo_count()?;
-    tracing::info!(
-        balance_sats = balance,
-        utxos = utxo_count,
-        "wallet loaded from db"
-    );
+    tracing::info!(balance_sats = balance, utxos = utxo_count, "wallet synced");
 
     let payment = PhoenixdClient::new(
         config.phoenixd_url.clone(),

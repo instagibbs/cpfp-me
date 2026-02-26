@@ -5,3 +5,4 @@ utxo_target_count = 10
 wallet_db_path = "./data/mainnet-wallet.db"
 phoenixd_url = "http://127.0.0.1:9740"
 mempool_api_url = "https://mempool.bitcoin.ninja"
+testing = true

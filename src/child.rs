@@ -159,9 +159,33 @@ pub fn build_child_tx(
         .map_err(|e| AppError::Wallet(format!("failed to build child tx: {e}")))?;
 
     #[expect(deprecated)]
-    wallet
-        .sign(&mut psbt, bdk_wallet::SignOptions::default())
+    let finalized = wallet
+        .sign(
+            &mut psbt,
+            bdk_wallet::SignOptions {
+                try_finalize: true,
+                ..bdk_wallet::SignOptions::default()
+            },
+        )
         .map_err(|e| AppError::Wallet(format!("failed to sign child tx: {e}")))?;
+
+    tracing::info!(finalized, "signed child tx PSBT");
+
+    // Debug: dump PSBT input state
+    for (i, input) in psbt.inputs.iter().enumerate() {
+        let is_p2a = psbt.unsigned_tx.input[i].previous_output == p2a_outpoint;
+        tracing::info!(
+            input_idx = i,
+            is_p2a,
+            outpoint = %psbt.unsigned_tx.input[i].previous_output,
+            has_witness_utxo = input.witness_utxo.is_some(),
+            has_non_witness_utxo = input.non_witness_utxo.is_some(),
+            has_final_witness = input.final_script_witness.as_ref().is_some_and(|w| !w.is_empty()),
+            has_tap_key_sig = input.tap_key_sig.is_some(),
+            tap_scripts_count = input.tap_scripts.len(),
+            "PSBT input state after sign"
+        );
+    }
 
     let p2a_input_idx = psbt
         .unsigned_tx
