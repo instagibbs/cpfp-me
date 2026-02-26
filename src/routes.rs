@@ -1,4 +1,5 @@
 use axum::extract::{Path, State};
+use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bitcoin::Amount;
@@ -347,8 +348,10 @@ fn build_and_persist(
 /// Consumes the UTXO reservation and triggers child tx build + broadcast.
 async fn handle_fakepay(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(order_id): Path<String>,
 ) -> Result<Json<StatusResponse>, AppError> {
+    check_admin_auth(&headers, &state)?;
     let reserved_utxo = {
         let mut orders = lock_orders(&state)?;
         let order = orders
@@ -365,9 +368,24 @@ async fn handle_fakepay(
     handle_paid(&state, &order_id).await
 }
 
+fn check_admin_auth(headers: &HeaderMap, state: &AppState) -> Result<(), AppError> {
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or("");
+
+    if token != state.config.admin_token {
+        return Err(AppError::NotFound("not found".into()));
+    }
+    Ok(())
+}
+
 async fn handle_admin_info(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    check_admin_auth(&headers, &state)?;
     let address = state.wallet.next_address()?;
     let balance = state.wallet.balance()?;
     let utxo_count = state.wallet.utxo_count()?;

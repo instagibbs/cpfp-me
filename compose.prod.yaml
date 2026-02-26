@@ -15,6 +15,7 @@ services:
     environment:
       - CPFP_MNEMONIC
       - CPFP_PHOENIXD_PASSWORD
+      - CPFP_ADMIN_TOKEN
     volumes:
       - ./config.prod.toml:/app/config.toml:ro
       - cpfp_data:/app/data
