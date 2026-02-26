@@ -18,6 +18,8 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/submit", post(handle_submit))
         .route("/api/status/{order_id}", get(handle_status))
+        .route("/api/admin/info", get(handle_admin_info))
+        .route("/api/admin/fakepay/{order_id}", post(handle_fakepay))
         .fallback_service(ServeDir::new("static"))
         .with_state(state)
 }
@@ -296,6 +298,41 @@ fn build_and_persist(
         .persist(&mut *db)
         .map_err(|e| AppError::Wallet(format!("failed to persist wallet: {e}")))?;
     Ok(result)
+}
+
+/// Test-only: simulate payment received for an order.
+/// Consumes the UTXO reservation and triggers child tx build + broadcast.
+async fn handle_fakepay(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+) -> Result<Json<StatusResponse>, AppError> {
+    let reserved_utxo = {
+        let mut orders = lock_orders(&state)?;
+        let order = orders
+            .get_mut(&order_id)
+            .ok_or_else(|| AppError::NotFound(order_id.clone()))?;
+        if order.status != OrderStatus::AwaitingPayment {
+            return Err(AppError::Internal("order is not awaiting payment".into()));
+        }
+        order.status = OrderStatus::Paid;
+        order.reserved_utxo
+    };
+    state.wallet.consume_reservation(&reserved_utxo);
+    tracing::info!(order_id = %order_id, "FAKEPAY: simulated payment");
+    handle_paid(&state, &order_id).await
+}
+
+async fn handle_admin_info(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let address = state.wallet.next_address()?;
+    let balance = state.wallet.balance()?;
+    let utxo_count = state.wallet.utxo_count()?;
+    Ok(Json(serde_json::json!({
+        "deposit_address": address,
+        "balance_sats": balance,
+        "utxo_count": utxo_count,
+    })))
 }
 
 fn set_order_status(state: &AppState, order_id: &str, status: OrderStatus) -> Result<(), AppError> {

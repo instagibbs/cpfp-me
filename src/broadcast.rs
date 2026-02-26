@@ -26,10 +26,24 @@ pub async fn submit_package(
         .await
         .map_err(|e| AppError::Broadcast(format!("failed to read response: {e}")))?;
 
+    tracing::info!(
+        http_status = %status,
+        response = %text,
+        "submitpackage response"
+    );
+
     if !status.is_success() {
         return Err(AppError::Broadcast(format!(
             "mempool.space returned {status}: {text}"
         )));
+    }
+
+    // submitpackage returns 200 even on failure — check package_msg
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+        let msg = json["package_msg"].as_str().unwrap_or("");
+        if msg != "success" {
+            return Err(AppError::Broadcast(format!("submitpackage failed: {text}")));
+        }
     }
 
     Ok(text)

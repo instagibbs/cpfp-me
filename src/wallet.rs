@@ -129,6 +129,15 @@ impl AppWallet {
         Ok(wallet.balance().total().to_sat())
     }
 
+    pub fn next_address(&self) -> Result<String, AppError> {
+        let mut wallet = self
+            .wallet
+            .lock()
+            .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
+        let info = wallet.reveal_next_address(KeychainKind::External);
+        Ok(info.address.to_string())
+    }
+
     /// Tries to reserve a UTXO large enough to cover `fee`.
     ///
     /// Returns the reserved outpoint, or an error if no unreserved

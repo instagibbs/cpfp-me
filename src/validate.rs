@@ -1,12 +1,14 @@
 use bitcoin::consensus::Decodable;
 use bitcoin::script::Builder;
 use bitcoin::transaction::Version;
-use bitcoin::{opcodes, ScriptBuf, Transaction};
+use bitcoin::{opcodes, Amount, ScriptBuf, Transaction};
 
 use crate::error::AppError;
 
 const TRUC_VERSION: Version = Version(3);
 const MAX_TRUC_PARENT_VSIZE: u64 = 10_000;
+/// Dust threshold for P2A outputs (witness v1, 2-byte program).
+const P2A_DUST_THRESHOLD: Amount = Amount::from_sat(240);
 
 #[derive(Debug)]
 pub struct ValidatedParent {
@@ -40,13 +42,50 @@ pub fn validate_parent_tx(raw_hex: &str) -> Result<ValidatedParent, AppError> {
     }
 
     let expected_p2a = p2a_script();
-    let p2a_vout = tx
+
+    // Find all P2A outputs and identify the dust one (the anchor to spend)
+    let p2a_outputs: Vec<(usize, &bitcoin::TxOut)> = tx
         .output
         .iter()
-        .position(|o| o.script_pubkey == expected_p2a)
-        .ok_or_else(|| AppError::InvalidTx {
+        .enumerate()
+        .filter(|(_, o)| o.script_pubkey == expected_p2a)
+        .collect();
+
+    if p2a_outputs.is_empty() {
+        return Err(AppError::InvalidTx {
             reason: "no P2A output found (expected OP_1 <0x4e73>)".into(),
-        })?;
+        });
+    }
+
+    // The anchor is the dust P2A output (value <= dust threshold)
+    let dust_p2a: Vec<_> = p2a_outputs
+        .iter()
+        .filter(|(_, o)| o.value <= P2A_DUST_THRESHOLD)
+        .collect();
+
+    if dust_p2a.is_empty() {
+        return Err(AppError::InvalidTx {
+            reason: "no dust P2A output found to use as anchor".into(),
+        });
+    }
+
+    // Ephemeral dust rule: exactly one dust output in the tx
+    let total_dust_outputs = tx
+        .output
+        .iter()
+        .filter(|o| {
+            o.value == Amount::ZERO
+                || (o.script_pubkey == expected_p2a && o.value <= P2A_DUST_THRESHOLD)
+        })
+        .count();
+
+    if total_dust_outputs != 1 {
+        return Err(AppError::InvalidTx {
+            reason: format!("expected exactly 1 dust output, found {total_dust_outputs}"),
+        });
+    }
+
+    let p2a_vout = dust_p2a[0].0;
 
     let vsize = tx.vsize() as u64;
     if vsize > MAX_TRUC_PARENT_VSIZE {
@@ -149,15 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_nonzero_p2a_value() {
-        let mut tx = make_truc_tx_with_p2a();
-        tx.output[1].value = Amount::from_sat(240);
-        let hex_str = encode_tx(&tx);
-        assert!(validate_parent_tx(&hex_str).is_ok());
-    }
-
-    #[test]
-    fn finds_p2a_at_any_index() {
+    fn picks_dust_p2a_when_multiple() {
         let tx = Transaction {
             version: Version(3),
             lock_time: LockTime::ZERO,
@@ -173,8 +204,8 @@ mod tests {
                     script_pubkey: dummy_p2wpkh(),
                 },
                 TxOut {
-                    value: Amount::from_sat(30_000),
-                    script_pubkey: dummy_p2wpkh(),
+                    value: Amount::from_sat(1000),
+                    script_pubkey: p2a_script(),
                 },
                 TxOut {
                     value: Amount::ZERO,
@@ -184,6 +215,33 @@ mod tests {
         };
         let hex_str = encode_tx(&tx);
         let parent = validate_parent_tx(&hex_str).unwrap();
-        assert_eq!(parent.p2a_vout, 2);
+        assert_eq!(parent.p2a_vout, 2, "should pick the 0-value P2A");
+    }
+
+    #[test]
+    fn rejects_no_dust_p2a() {
+        let tx = Transaction {
+            version: Version(3),
+            lock_time: LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: ScriptBuf::new(),
+                sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+                witness: bitcoin::Witness::new(),
+            }],
+            output: vec![
+                TxOut {
+                    value: Amount::from_sat(50_000),
+                    script_pubkey: dummy_p2wpkh(),
+                },
+                TxOut {
+                    value: Amount::from_sat(1000),
+                    script_pubkey: p2a_script(),
+                },
+            ],
+        };
+        let hex_str = encode_tx(&tx);
+        let err = validate_parent_tx(&hex_str).unwrap_err().to_string();
+        assert!(err.contains("no dust P2A"));
     }
 }
