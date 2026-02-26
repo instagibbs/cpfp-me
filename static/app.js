@@ -196,7 +196,7 @@ function resubmit() {
 
 async function loadDemoParent() {
   clearInputError();
-  const btn = document.querySelector(".btn-secondary");
+  const btn = document.getElementById("btn-demo");
   btn.disabled = true;
   btn.textContent = "Loading...";
 
