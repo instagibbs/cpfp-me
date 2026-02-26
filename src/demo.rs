@@ -109,10 +109,22 @@ impl DemoWallet {
             .lock()
             .map_err(|e| AppError::Internal(format!("demo wallet lock poisoned: {e}")))?;
 
+        // Only spend confirmed UTXOs — spending unconfirmed would make
+        // the parent a grandchild of an unconfirmed tx, violating TRUC 1p1c.
         let utxo = wallet
             .list_unspent()
-            .next()
-            .ok_or_else(|| AppError::Internal("demo wallet has no UTXOs — fund it first".into()))?;
+            .find(|u| {
+                matches!(
+                    u.chain_position,
+                    bdk_wallet::chain::ChainPosition::Confirmed { .. }
+                )
+            })
+            .ok_or_else(|| {
+                AppError::Internal(
+                    "demo wallet has no confirmed UTXOs — previous bump pending confirmation"
+                        .into(),
+                )
+            })?;
 
         // Always return to index 0 so the tx is deterministic
         let return_addr = wallet.peek_address(KeychainKind::External, 0).address;
