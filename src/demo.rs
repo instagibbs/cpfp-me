@@ -33,10 +33,13 @@ impl DemoWallet {
         let external = format!("tr({xpriv}/86'/{coin}'/1'/0/*)");
         let internal = format!("tr({xpriv}/86'/{coin}'/1'/1/*)");
 
-        let wallet = Wallet::create(external, internal)
+        let mut wallet = Wallet::create(external, internal)
             .network(network)
             .create_wallet_no_persist()
             .map_err(|e| AppError::Internal(format!("failed to create demo wallet: {e}")))?;
+
+        // Reveal the first address so sync_with_revealed_spks has something to scan
+        wallet.reveal_next_address(KeychainKind::External);
 
         Ok(Self {
             wallet: Mutex::new(wallet),
@@ -55,11 +58,11 @@ impl DemoWallet {
                 .wallet
                 .lock()
                 .map_err(|e| AppError::Internal(format!("demo wallet lock poisoned: {e}")))?;
-            wallet.start_full_scan().build()
+            wallet.start_sync_with_revealed_spks().build()
         };
 
         let update = esplora
-            .full_scan(request, 20, 5)
+            .sync(request, 5)
             .await
             .map_err(|e| AppError::Internal(format!("demo wallet sync failed: {e}")))?;
 
@@ -75,11 +78,12 @@ impl DemoWallet {
     }
 
     pub fn deposit_address(&self) -> Result<String, AppError> {
-        let mut wallet = self
+        let wallet = self
             .wallet
             .lock()
             .map_err(|e| AppError::Internal(format!("demo wallet lock poisoned: {e}")))?;
-        let addr = wallet.reveal_next_address(KeychainKind::External).address;
+        // Peek at index 0 — always the same address for the demo wallet
+        let addr = wallet.peek_address(KeychainKind::External, 0).address;
         Ok(addr.to_string())
     }
 
@@ -100,7 +104,7 @@ impl DemoWallet {
     /// Every call with the same unspent UTXO produces the same tx,
     /// so multiple users just race to bump the same parent.
     pub fn build_parent(&self) -> Result<DemoParent, AppError> {
-        let mut wallet = self
+        let wallet = self
             .wallet
             .lock()
             .map_err(|e| AppError::Internal(format!("demo wallet lock poisoned: {e}")))?;
@@ -110,7 +114,8 @@ impl DemoWallet {
             .next()
             .ok_or_else(|| AppError::Internal("demo wallet has no UTXOs — fund it first".into()))?;
 
-        let return_addr = wallet.reveal_next_address(KeychainKind::External).address;
+        // Always return to index 0 so the tx is deterministic
+        let return_addr = wallet.peek_address(KeychainKind::External, 0).address;
 
         let parent = Transaction {
             version: Version(3),

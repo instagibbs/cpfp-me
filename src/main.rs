@@ -36,7 +36,11 @@ async fn main() -> anyhow::Result<()> {
 
     let balance = app_wallet.balance()?;
     let utxo_count = app_wallet.utxo_count()?;
-    tracing::info!(balance_sats = balance, utxos = utxo_count, "wallet loaded from db");
+    tracing::info!(
+        balance_sats = balance,
+        utxos = utxo_count,
+        "wallet loaded from db"
+    );
 
     let payment = PhoenixdClient::new(
         config.phoenixd_url.clone(),

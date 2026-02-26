@@ -1,19 +1,36 @@
+use std::collections::HashMap;
+
 use bitcoin::Amount;
 use serde::Deserialize;
 
 use crate::error::AppError;
 
+/// mempool.space format: /api/v1/fees/recommended
 #[derive(Debug, Deserialize)]
 struct MempoolFees {
     #[serde(rename = "fastestFee")]
     fastest_fee: u64,
 }
 
-/// Fetches the current fastest fee rate from mempool.space.
+/// Fetches the current fastest fee rate. Tries mempool.space format
+/// first, then falls back to Esplora /api/fee-estimates format.
 /// Returns fee rate in sat/vB.
 pub async fn fetch_fee_rate(client: &reqwest::Client, mempool_url: &str) -> Result<u64, AppError> {
+    // Try mempool.space format
     let url = format!("{mempool_url}/api/v1/fees/recommended");
-    let fees: MempoolFees = client
+    if let Ok(resp) = client.get(&url).send().await {
+        if resp.status().is_success() {
+            if let Ok(fees) = resp.json::<MempoolFees>().await {
+                if fees.fastest_fee > 0 {
+                    return Ok(fees.fastest_fee);
+                }
+            }
+        }
+    }
+
+    // Fall back to Esplora format: /api/fee-estimates → {"1": 3.5, "2": 2.1, ...}
+    let url = format!("{mempool_url}/api/fee-estimates");
+    let estimates: HashMap<String, f64> = client
         .get(&url)
         .send()
         .await
@@ -24,13 +41,19 @@ pub async fn fetch_fee_rate(client: &reqwest::Client, mempool_url: &str) -> Resu
         .await
         .map_err(|e| AppError::FeeEstimation(format!("invalid json: {e}")))?;
 
-    if fees.fastest_fee == 0 {
-        return Err(AppError::FeeEstimation(
-            "mempool returned 0 sat/vB fee rate".into(),
-        ));
+    // Key "1" = next block target
+    let rate = estimates
+        .get("1")
+        .or_else(|| estimates.get("2"))
+        .copied()
+        .ok_or_else(|| AppError::FeeEstimation("no fee estimates available".into()))?;
+
+    if rate <= 0.0 {
+        return Err(AppError::FeeEstimation("fee rate is 0".into()));
     }
 
-    Ok(fees.fastest_fee)
+    // Esplora returns float sat/vB, round up
+    Ok(rate.ceil() as u64)
 }
 
 /// Calculates the total fee needed for CPFP, including markup.
@@ -71,7 +94,6 @@ mod tests {
 
     #[test]
     fn rounds_up() {
-        // 301 * 7 = 2107, * 1030 = 2170210, / 1000 = 2170.21
         // (2107 * 1030 + 999) / 1000 = 2171209 / 1000 = 2171
         let fee = calculate_total_fee(201, 100, 7, 3.0);
         assert_eq!(fee, Amount::from_sat(2171));
