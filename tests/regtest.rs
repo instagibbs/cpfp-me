@@ -187,7 +187,7 @@ fn child_tx_has_correct_structure() {
         .unwrap();
     assert!(
         p2a_input.witness.is_empty(),
-        "P2A input witness must be empty (anyone-can-spend)"
+        "P2A input witness must be empty stack"
     );
 
     // Hex round-trips correctly

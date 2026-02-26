@@ -106,6 +106,7 @@ pub fn build_child_tx(
         ..PsbtInput::default()
     };
 
+    // P2A has an empty witness stack (1 byte for the 0-items count)
     let satisfaction_weight = Weight::from_witness_data_size(1);
 
     // Gather all wallet state before build_tx() borrows wallet mutably
@@ -183,6 +184,7 @@ pub fn build_child_tx(
     let mut final_tx = psbt
         .extract_tx()
         .map_err(|e| AppError::Wallet(format!("failed to extract signed tx: {e}")))?;
+    // P2A spending requires an empty witness stack
     final_tx.input[p2a_input_idx].witness = bitcoin::Witness::default();
 
     let vsize = final_tx.vsize() as u64;
