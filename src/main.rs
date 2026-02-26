@@ -43,12 +43,26 @@ async fn main() -> anyhow::Result<()> {
         config.phoenixd_password.clone(),
     );
 
+    let test_wallet = config
+        .test_mnemonic
+        .as_ref()
+        .map(|m| {
+            let network = config.network.to_bitcoin_network();
+            cpfp_me::test_wallet::TestWallet::new(m, network).map(Arc::new)
+        })
+        .transpose()?;
+
+    if test_wallet.is_some() {
+        tracing::info!("test wallet configured");
+    }
+
     let state = AppState {
         config: Arc::new(config),
         http_client: reqwest::Client::new(),
         wallet: Arc::new(app_wallet),
         payment: Arc::new(payment),
         orders: Arc::new(Mutex::new(HashMap::new())),
+        test_wallet,
     };
 
     cpfp_me::cleanup::spawn_cleanup_task(state.clone());

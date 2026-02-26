@@ -21,6 +21,8 @@ pub struct Config {
     pub mnemonic: String,
     #[serde(skip)]
     pub phoenixd_password: String,
+    #[serde(skip)]
+    pub test_mnemonic: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +55,7 @@ impl Config {
 
         config.mnemonic = read_env("CPFP_MNEMONIC", "12 or 24 word BIP39 mnemonic")?;
         config.phoenixd_password = read_env("CPFP_PHOENIXD_PASSWORD", "phoenixd HTTP password")?;
+        config.test_mnemonic = std::env::var("CPFP_TEST_MNEMONIC").ok();
 
         config.validate()?;
         Ok(config)

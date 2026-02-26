@@ -7,5 +7,6 @@ pub mod fees;
 pub mod payment;
 pub mod routes;
 pub mod state;
+pub mod test_wallet;
 pub mod validate;
 pub mod wallet;
