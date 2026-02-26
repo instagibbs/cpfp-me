@@ -103,9 +103,17 @@ pub async fn validate_parent_broadcastable(
             if let Some(error) = result["error"].as_str() {
                 let is_fee_error = FEE_ERRORS.iter().any(|fe| error.contains(fe));
                 if !is_fee_error {
-                    return Err(AppError::InvalidTx {
-                        reason: format!("parent transaction is not bumpable: {error}"),
-                    });
+                    let reason = if error.contains("TRUC-violation")
+                        || error.contains("too many ancestors")
+                        || error.contains("descendant")
+                    {
+                        "transaction already has a pending bump in the mempool \
+                         — wait for it to confirm before bumping again"
+                            .into()
+                    } else {
+                        format!("parent transaction is not bumpable: {error}")
+                    };
+                    return Err(AppError::InvalidTx { reason });
                 }
             }
         }
