@@ -85,17 +85,15 @@ async fn handle_submit(
     // Estimate child vsize: ~110 vB is typical for a 1-in-1-out
     // taproot child + the P2A input
     let estimated_child_vsize = 110;
-    let total_fee = fees::calculate_total_fee(
+    let fee_breakdown = fees::calculate_fees(
         parent.vsize,
         estimated_child_vsize,
         fee_rate,
         state.config.markup_percent,
     );
 
-    // Reserve a UTXO before taking payment. This prevents two
-    // concurrent requests from claiming the same UTXO.
-    // Reservation expires after 60s if payment doesn't arrive.
-    let reserved_utxo = match state.wallet.reserve_utxo_for_fee(total_fee) {
+    // Reserve a UTXO before taking payment.
+    let reserved_utxo = match state.wallet.reserve_utxo_for_fee(fee_breakdown.mining_fee) {
         Ok(outpoint) => outpoint,
         Err(e) => {
             // No single UTXO is large enough — trigger background
@@ -110,7 +108,11 @@ async fn handle_submit(
     // becomes unpayable before the reservation is released.
     let invoice = match state
         .payment
-        .create_invoice(total_fee.to_sat(), &description, RESERVATION_TTL.as_secs())
+        .create_invoice(
+            fee_breakdown.invoice_amount.to_sat(),
+            &description,
+            RESERVATION_TTL.as_secs(),
+        )
         .await
     {
         Ok(inv) => inv,
@@ -127,7 +129,8 @@ async fn handle_submit(
         order_id = %order_id,
         parent_txid = %parent_txid,
         fee_rate,
-        total_fee_sats = total_fee.to_sat(),
+        mining_fee_sats = fee_breakdown.mining_fee.to_sat(),
+        invoice_sats = fee_breakdown.invoice_amount.to_sat(),
         reserved_utxo = %reserved_utxo,
         "order created"
     );
@@ -139,7 +142,13 @@ async fn handle_submit(
         fee_rate,
     };
 
-    let order = Order::new(&parent, invoice, total_fee, fee_rate, reserved_utxo);
+    let order = Order::new(
+        &parent,
+        invoice,
+        fee_breakdown.mining_fee,
+        fee_rate,
+        reserved_utxo,
+    );
 
     let mut orders = lock_orders(&state)?;
     orders.insert(order_id, order);
@@ -229,14 +238,14 @@ async fn handle_awaiting_payment(
 }
 
 async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResponse>, AppError> {
-    let (parent_hex, total_fee) = get_order_details(state, order_id)?;
+    let (parent_hex, mining_fee) = get_order_details(state, order_id)?;
     let parent = validate::validate_parent_tx(&parent_hex)?;
 
     // Wallet was synced at startup — skip re-sync here to avoid
     // blocking on slow Esplora responses after user already paid.
     // The wallet's UTXO state is maintained by BDK as we build txs.
 
-    let built_child = build_and_persist(state, &parent, total_fee)?;
+    let built_child = build_and_persist(state, &parent, mining_fee)?;
     let parent_txid = parent.tx.compute_txid().to_string();
 
     let result = broadcast::submit_package(
@@ -252,7 +261,7 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
             tracing::info!(
                 parent_txid = %parent_txid,
                 child_txid = %built_child.tx.compute_txid(),
-                fee = %total_fee,
+                fee = %mining_fee,
                 "package broadcast successful"
             );
             set_order_status(
@@ -308,13 +317,13 @@ fn get_order_details(state: &AppState, order_id: &str) -> Result<(String, Amount
     let order = orders
         .get(order_id)
         .ok_or_else(|| AppError::NotFound(order_id.to_string()))?;
-    Ok((order.parent_raw_hex.clone(), order.total_fee))
+    Ok((order.parent_raw_hex.clone(), order.mining_fee))
 }
 
 fn build_and_persist(
     state: &AppState,
     parent: &validate::ValidatedParent,
-    total_fee: Amount,
+    mining_fee: Amount,
 ) -> Result<child::BuiltChild, AppError> {
     let mut wallet = state
         .wallet
@@ -322,7 +331,7 @@ fn build_and_persist(
         .lock()
         .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
     let utxo_target = state.config.utxo_target_count;
-    let result = child::build_child_tx(&mut wallet, parent, total_fee, utxo_target)?;
+    let result = child::build_child_tx(&mut wallet, parent, mining_fee, utxo_target)?;
     let mut db = state
         .wallet
         .db

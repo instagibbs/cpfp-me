@@ -23,7 +23,7 @@ pub struct AppState {
 pub struct Order {
     pub parent_raw_hex: String,
     pub invoice: Invoice,
-    pub total_fee: Amount,
+    pub mining_fee: Amount,
     pub fee_rate: u64,
     pub reserved_utxo: OutPoint,
     pub status: OrderStatus,
@@ -42,13 +42,13 @@ impl Order {
     pub fn new(
         parent: &ValidatedParent,
         invoice: Invoice,
-        total_fee: Amount,
+        mining_fee: Amount,
         fee_rate: u64,
         reserved_utxo: OutPoint,
     ) -> Self {
         Self {
             parent_raw_hex: parent.raw_hex.clone(),
-            total_fee,
+            mining_fee,
             fee_rate,
             invoice,
             reserved_utxo,

@@ -57,23 +57,32 @@ pub async fn fetch_fee_rate(client: &reqwest::Client, mempool_url: &str) -> Resu
     Ok(rate.ceil() as u64)
 }
 
-/// Calculates the total fee needed for CPFP, including markup.
+pub struct FeeBreakdown {
+    /// Fee the child tx pays to the miner.
+    pub mining_fee: Amount,
+    /// Total amount to charge the user (mining fee + our profit).
+    pub invoice_amount: Amount,
+}
+
+/// Calculates the mining fee and invoice amount for a CPFP bump.
 ///
-/// The child must pay enough fee to cover both parent (0-fee) and
-/// child at the target fee rate, plus admin markup.
-pub fn calculate_total_fee(
+/// The mining fee covers both parent + child at the target fee rate.
+/// The invoice amount adds the admin markup on top — the difference
+/// stays in our wallet as profit.
+pub fn calculate_fees(
     parent_vsize: u64,
     child_vsize: u64,
     fee_rate_sat_per_vb: u64,
     markup_percent: f64,
-) -> Amount {
-    let base_sats = fee_rate_sat_per_vb * (parent_vsize + child_vsize);
-    // Integer math: markup in basis points to avoid float precision
-    // e.g. 10.0% -> numerator=1100, denominator=1000
+) -> FeeBreakdown {
+    let mining_fee = fee_rate_sat_per_vb * (parent_vsize + child_vsize);
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let markup_bps = (markup_percent * 10.0) as u64;
-    let total = (base_sats * (1000 + markup_bps)).div_ceil(1000);
-    Amount::from_sat(total)
+    let invoice_amount = (mining_fee * (1000 + markup_bps)).div_ceil(1000);
+    FeeBreakdown {
+        mining_fee: Amount::from_sat(mining_fee),
+        invoice_amount: Amount::from_sat(invoice_amount),
+    }
 }
 
 #[cfg(test)]
@@ -82,34 +91,36 @@ mod tests {
 
     #[test]
     fn zero_markup() {
-        let fee = calculate_total_fee(200, 100, 10, 0.0);
-        assert_eq!(fee, Amount::from_sat(3000));
+        let f = calculate_fees(200, 100, 10, 0.0);
+        assert_eq!(f.mining_fee, Amount::from_sat(3000));
+        assert_eq!(f.invoice_amount, Amount::from_sat(3000));
     }
 
     #[test]
     fn ten_percent_markup() {
-        let fee = calculate_total_fee(200, 100, 10, 10.0);
-        // 3000 * 1100 / 1000 = 3300
-        assert_eq!(fee, Amount::from_sat(3300));
+        let f = calculate_fees(200, 100, 10, 10.0);
+        assert_eq!(f.mining_fee, Amount::from_sat(3000));
+        assert_eq!(f.invoice_amount, Amount::from_sat(3300));
     }
 
     #[test]
     fn rounds_up() {
-        // (2107 * 1030 + 999) / 1000 = 2171209 / 1000 = 2171
-        let fee = calculate_total_fee(201, 100, 7, 3.0);
-        assert_eq!(fee, Amount::from_sat(2171));
+        let f = calculate_fees(201, 100, 7, 3.0);
+        assert_eq!(f.mining_fee, Amount::from_sat(2107));
+        assert_eq!(f.invoice_amount, Amount::from_sat(2171));
     }
 
     #[test]
     fn large_parent() {
-        let fee = calculate_total_fee(5000, 150, 50, 5.0);
-        // 5150 * 50 = 257500, * 1.05 = 270375
-        assert_eq!(fee, Amount::from_sat(270_375));
+        let f = calculate_fees(5000, 150, 50, 5.0);
+        assert_eq!(f.mining_fee, Amount::from_sat(257_500));
+        assert_eq!(f.invoice_amount, Amount::from_sat(270_375));
     }
 
     #[test]
     fn minimum_sizes() {
-        let fee = calculate_total_fee(1, 1, 1, 0.0);
-        assert_eq!(fee, Amount::from_sat(2));
+        let f = calculate_fees(1, 1, 1, 0.0);
+        assert_eq!(f.mining_fee, Amount::from_sat(2));
+        assert_eq!(f.invoice_amount, Amount::from_sat(2));
     }
 }
