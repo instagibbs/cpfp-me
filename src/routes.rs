@@ -259,12 +259,6 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
 
     match result {
         Ok(_) => {
-            // Only persist wallet state after successful broadcast.
-            // This prevents phantom change outputs from failed broadcasts
-            // being saved to the DB and corrupting future UTXO selection.
-            if let Err(e) = persist_wallet(state) {
-                tracing::error!(error = %e, "failed to persist wallet after broadcast");
-            }
             tracing::info!(
                 parent_txid = %parent_txid,
                 parent_hex = %parent.raw_hex,
@@ -344,23 +338,6 @@ fn build_child(
         .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
     let utxo_target = state.config.utxo_target_count;
     child::build_child_tx(&mut wallet, parent, mining_fee, utxo_target)
-}
-
-fn persist_wallet(state: &AppState) -> Result<(), AppError> {
-    let mut wallet = state
-        .wallet
-        .wallet
-        .lock()
-        .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
-    let mut db = state
-        .wallet
-        .db
-        .lock()
-        .map_err(|e| AppError::Wallet(format!("db lock poisoned: {e}")))?;
-    wallet
-        .persist(&mut *db)
-        .map_err(|e| AppError::Wallet(format!("failed to persist wallet: {e}")))?;
-    Ok(())
 }
 
 /// Test-only: simulate payment received for an order.
