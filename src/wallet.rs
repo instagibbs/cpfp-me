@@ -85,12 +85,12 @@ impl AppWallet {
                 .wallet
                 .lock()
                 .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
-            wallet.start_full_scan().build()
+            wallet.start_sync_with_revealed_spks().build()
         };
 
         let update = self
             .esplora
-            .full_scan(request, STOP_GAP, PARALLEL_REQUESTS)
+            .sync(request, PARALLEL_REQUESTS)
             .await
             .map_err(|e| AppError::Wallet(format!("sync failed: {e}")))?;
 

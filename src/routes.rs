@@ -232,7 +232,9 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
     let (parent_hex, total_fee) = get_order_details(state, order_id)?;
     let parent = validate::validate_parent_tx(&parent_hex)?;
 
-    state.wallet.sync().await?;
+    // Wallet was synced at startup — skip re-sync here to avoid
+    // blocking on slow Esplora responses after user already paid.
+    // The wallet's UTXO state is maintained by BDK as we build txs.
 
     let built_child = build_and_persist(state, &parent, total_fee)?;
     let parent_txid = parent.tx.compute_txid().to_string();
