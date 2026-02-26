@@ -58,7 +58,17 @@ fn select_wallet_utxos(
     total_fee: Amount,
     utxo_target: u32,
 ) -> Result<Vec<OutPoint>, AppError> {
-    let mut utxos: Vec<LocalOutput> = wallet.list_unspent().collect();
+    // Only spend confirmed outputs — unconfirmed change from previous
+    // child txs would violate TRUC's 1-unconfirmed-descendant rule.
+    let mut utxos: Vec<LocalOutput> = wallet
+        .list_unspent()
+        .filter(|u| {
+            matches!(
+                u.chain_position,
+                bdk_wallet::chain::ChainPosition::Confirmed { .. }
+            )
+        })
+        .collect();
     #[expect(clippy::cast_possible_truncation)]
     let utxo_count = utxos.len() as u32;
 

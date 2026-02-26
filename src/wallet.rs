@@ -160,10 +160,15 @@ impl AppWallet {
         let now = Instant::now();
         reservations.retain(|_, expires_at| *expires_at > now);
 
-        // Find unreserved UTXO large enough
-        let utxo = wallet
-            .list_unspent()
-            .find(|u| u.txout.value >= fee && !reservations.contains_key(&u.outpoint));
+        // Find unreserved confirmed UTXO large enough
+        let utxo = wallet.list_unspent().find(|u| {
+            u.txout.value >= fee
+                && !reservations.contains_key(&u.outpoint)
+                && matches!(
+                    u.chain_position,
+                    bdk_wallet::chain::ChainPosition::Confirmed { .. }
+                )
+        });
 
         match utxo {
             Some(u) => {
@@ -218,7 +223,13 @@ impl AppWallet {
         let now = Instant::now();
         let unreserved: Vec<_> = wallet
             .list_unspent()
-            .filter(|u| reservations.get(&u.outpoint).is_none_or(|exp| *exp <= now))
+            .filter(|u| {
+                reservations.get(&u.outpoint).is_none_or(|exp| *exp <= now)
+                    && matches!(
+                        u.chain_position,
+                        bdk_wallet::chain::ChainPosition::Confirmed { .. }
+                    )
+            })
             .collect();
 
         if unreserved.len() < 2 {
