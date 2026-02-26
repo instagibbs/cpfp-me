@@ -66,6 +66,18 @@ async fn handle_submit(
 ) -> Result<Json<SubmitResponse>, AppError> {
     let parent = validate::validate_parent_tx(&req.raw_tx)?;
 
+    // Probe whether the parent is actually bumpable by submitting a
+    // trial package with a 0-fee child. Rejects parents with spent
+    // inputs or other non-fee policy violations before taking payment.
+    let trial_child = child::build_trial_child(&parent)?;
+    broadcast::validate_parent_broadcastable(
+        &state.http_client,
+        &state.config.mempool_api_url,
+        &parent.raw_hex,
+        &trial_child,
+    )
+    .await?;
+
     let fee_rate = fees::fetch_fee_rate(&state.http_client, &state.config.mempool_api_url).await?;
 
     // Estimate child vsize: ~110 vB is typical for a 1-in-1-out
@@ -263,6 +275,10 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
                 error = %reason,
                 "package broadcast failed"
             );
+            // Re-sync wallet to recover the unbroadcast UTXO
+            if let Err(sync_err) = state.wallet.sync().await {
+                tracing::error!(error = %sync_err, "failed to re-sync wallet after broadcast failure");
+            }
             set_order_status(
                 state,
                 order_id,

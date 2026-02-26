@@ -1,7 +1,9 @@
 use bdk_wallet::{KeychainKind, LocalOutput, Wallet};
+use bitcoin::absolute::LockTime;
 use bitcoin::consensus::Encodable;
 use bitcoin::psbt::Input as PsbtInput;
-use bitcoin::{Amount, OutPoint, Transaction, TxOut, Weight};
+use bitcoin::transaction::Version;
+use bitcoin::{Amount, OutPoint, Sequence, Transaction, TxIn, TxOut, Weight};
 
 use crate::error::AppError;
 use crate::validate::{p2a_script, ValidatedParent};
@@ -11,6 +13,40 @@ const MAX_TRUC_CHILD_VSIZE: u64 = 1_000;
 pub struct BuiltChild {
     pub tx: Transaction,
     pub hex: String,
+}
+
+/// Builds a minimal 0-fee trial child that only spends the P2A output.
+/// Used to probe whether the parent is valid before taking payment.
+/// This tx is not meant to be broadcast — it's just for testing
+/// the package against mempool policy.
+pub fn build_trial_child(parent: &ValidatedParent) -> Result<String, AppError> {
+    let parent_txid = parent.tx.compute_txid();
+    let p2a_outpoint = OutPoint::new(parent_txid, parent.p2a_vout);
+
+    // OP_RETURN with 32 bytes of padding to meet min tx size
+    let op_return_script =
+        bitcoin::ScriptBuf::from_bytes([&[0x6a, 0x20], [0x00; 32].as_slice()].concat());
+
+    let tx = Transaction {
+        version: Version(3),
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: p2a_outpoint,
+            script_sig: bitcoin::ScriptBuf::new(),
+            sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+            witness: bitcoin::Witness::new(),
+        }],
+        output: vec![TxOut {
+            value: Amount::ZERO,
+            script_pubkey: op_return_script,
+        }],
+    };
+
+    let mut buf = Vec::new();
+    tx.consensus_encode(&mut buf)
+        .map_err(|e| AppError::Internal(format!("failed to encode trial child: {e}")))?;
+
+    Ok(hex::encode(buf))
 }
 
 /// Selects wallet UTXOs for the child transaction.
