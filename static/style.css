@@ -245,6 +245,12 @@ footer {
   line-height: 1.5;
 }
 
+.policy {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
 .countdown {
   font-family: var(--font-mono);
   color: var(--accent);
