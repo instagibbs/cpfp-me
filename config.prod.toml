@@ -1,0 +1,7 @@
+network = "bitcoin"
+listen_addr = "0.0.0.0:3000"
+markup_percent = 10.0
+utxo_target_count = 10
+wallet_db_path = "./data/wallet.db"
+phoenixd_url = "http://phoenixd:9740"
+mempool_api_url = "https://mempool.bitcoin.ninja"

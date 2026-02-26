@@ -1,0 +1,38 @@
+services:
+  phoenixd:
+    image: acinq/phoenixd:latest
+    command:
+      - --agree-to-terms-of-service
+      - --http-bind-ip=0.0.0.0
+    volumes:
+      - phoenixd_data:/phoenix/.phoenix
+    restart: unless-stopped
+
+  cpfp:
+    build: .
+    depends_on:
+      - phoenixd
+    environment:
+      - CPFP_MNEMONIC
+      - CPFP_PHOENIXD_PASSWORD
+    volumes:
+      - ./config.prod.toml:/app/config.toml:ro
+      - cpfp_data:/app/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - cpfp
+    restart: unless-stopped
+
+volumes:
+  phoenixd_data:
+  cpfp_data:
+  caddy_data:
