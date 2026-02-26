@@ -353,7 +353,33 @@ fn signing_works_after_wallet_reload() {
             "wallet should have balance after reload"
         );
 
-        // Build second child spending the change output
+        // First test: can BDK sign a simple self-spend after reload?
+        let self_addr = wallet
+            .reveal_next_address(bdk_wallet::KeychainKind::Internal)
+            .address;
+        let mut self_builder = wallet.build_tx();
+        self_builder
+            .drain_wallet()
+            .drain_to(self_addr.script_pubkey());
+        let mut self_psbt = self_builder.finish().unwrap();
+        #[allow(deprecated)]
+        let self_finalized = wallet
+            .sign(&mut self_psbt, bdk_wallet::SignOptions::default())
+            .unwrap();
+        eprintln!("Self-spend finalized: {self_finalized}");
+        let self_tx = self_psbt.extract_tx().unwrap();
+        for (i, input) in self_tx.input.iter().enumerate() {
+            eprintln!(
+                "  self-spend input[{i}] witness items: {}",
+                input.witness.len()
+            );
+            assert!(
+                !input.witness.is_empty(),
+                "self-spend input {i} should have witness"
+            );
+        }
+
+        // Now test our build_child_tx
         let parent_tx2 = create_truc_parent(rpc);
         let parent_hex2 = encode_tx_hex(&parent_tx2);
         let parent2 = validate_parent_tx(&parent_hex2).unwrap();
