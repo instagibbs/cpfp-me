@@ -15,6 +15,8 @@ pub struct Config {
     pub wallet_db_path: PathBuf,
     pub phoenixd_url: String,
     pub mempool_api_url: String,
+    #[serde(default)]
+    pub testing: bool,
     #[serde(skip)]
     pub mnemonic: String,
     #[serde(skip)]

@@ -15,11 +15,17 @@ use crate::validate;
 use crate::wallet::RESERVATION_TTL;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let mut router = Router::new()
         .route("/api/submit", post(handle_submit))
         .route("/api/status/{order_id}", get(handle_status))
-        .route("/api/admin/info", get(handle_admin_info))
-        .route("/api/admin/fakepay/{order_id}", post(handle_fakepay))
+        .route("/api/admin/info", get(handle_admin_info));
+
+    if state.config.testing {
+        tracing::warn!("testing mode enabled: /api/admin/fakepay is available");
+        router = router.route("/api/admin/fakepay/{order_id}", post(handle_fakepay));
+    }
+
+    router
         .fallback_service(ServeDir::new("static"))
         .with_state(state)
 }

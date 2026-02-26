@@ -27,3 +27,7 @@ phoenixd_url = "http://127.0.0.1:9740"
 # Mainnet: https://mempool.space
 # Testnet: https://mempool.space/testnet
 mempool_api_url = "https://mempool.space/testnet"
+
+# Enable testing mode (exposes /api/admin/fakepay endpoint).
+# Do NOT enable in production.
+# testing = true
