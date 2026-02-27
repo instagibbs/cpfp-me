@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -10,6 +10,8 @@ use crate::payment::{Invoice, PhoenixdClient};
 use crate::validate::ValidatedParent;
 use crate::wallet::AppWallet;
 
+const RECENT_BUMPS_MAX: usize = 5;
+
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
@@ -18,6 +20,23 @@ pub struct AppState {
     pub payment: Arc<PhoenixdClient>,
     pub orders: Arc<Mutex<HashMap<String, Order>>>,
     pub demo_wallet: Arc<DemoWallet>,
+    pub recent_bumps: Arc<Mutex<VecDeque<String>>>,
+}
+
+impl AppState {
+    pub fn record_bump(&self, txid: String) {
+        if let Ok(mut bumps) = self.recent_bumps.lock() {
+            bumps.push_front(txid);
+            bumps.truncate(RECENT_BUMPS_MAX);
+        }
+    }
+
+    pub fn get_recent_bumps(&self) -> Vec<String> {
+        self.recent_bumps
+            .lock()
+            .map(|b| b.iter().cloned().collect())
+            .unwrap_or_default()
+    }
 }
 
 pub struct Order {

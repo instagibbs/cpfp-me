@@ -21,7 +21,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/status/{order_id}", get(handle_status))
         .route("/api/admin/info", get(handle_admin_info));
 
-    router = router.route("/api/demo-parent", get(handle_demo_parent));
+    router = router
+        .route("/api/demo-parent", get(handle_demo_parent))
+        .route("/api/recent-bumps", get(handle_recent_bumps));
 
     if state.config.testing {
         tracing::warn!("testing mode enabled: /api/admin/fakepay is available");
@@ -274,6 +276,7 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
                     txid: parent_txid.clone(),
                 },
             )?;
+            state.record_bump(parent_txid.clone());
             Ok(Json(StatusResponse {
                 status: "broadcast".into(),
                 txid: Some(parent_txid.clone()),
@@ -414,6 +417,22 @@ async fn handle_demo_parent(
         "txid": parent.txid,
         "value_sats": parent.value_sats,
     })))
+}
+
+async fn handle_recent_bumps(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let bumps = state.get_recent_bumps();
+    let links: Vec<_> = bumps
+        .iter()
+        .map(|txid| {
+            serde_json::json!({
+                "txid": txid,
+                "url": state.config.mempool_url_for_tx(txid),
+            })
+        })
+        .collect();
+    Json(serde_json::json!({ "bumps": links }))
 }
 
 fn set_order_status(state: &AppState, order_id: &str, status: OrderStatus) -> Result<(), AppError> {

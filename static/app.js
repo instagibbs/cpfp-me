@@ -147,7 +147,8 @@ async function checkStatus() {
       showState("broadcasting");
       setTimeout(() => {
         document.getElementById("mempool-link").href = data.mempool_url;
-        document.getElementById("mempool-link").textContent = data.mempool_url;
+        document.getElementById("mempool-link").textContent = data.txid;
+        loadRecentBumps();
         showState("success");
       }, 1000);
       return;
@@ -194,6 +195,36 @@ function resubmit() {
   submitTx();
 }
 
+async function loadRecentBumps() {
+  try {
+    const resp = await fetch("/api/recent-bumps");
+    const data = await resp.json();
+    const bumps = data.bumps || [];
+    const section = document.getElementById("recent-bumps");
+    const tbody = document.getElementById("recent-bumps-body");
+    tbody.innerHTML = "";
+    if (bumps.length === 0) {
+      section.classList.add("hidden");
+      return;
+    }
+    for (const bump of bumps) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      const a = document.createElement("a");
+      a.href = bump.url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = bump.txid;
+      td.appendChild(a);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+    section.classList.remove("hidden");
+  } catch (_err) {
+    // Non-critical; leave section hidden
+  }
+}
+
 async function loadDemoParent() {
   clearInputError();
   const btn = document.getElementById("btn-demo");
@@ -215,3 +246,5 @@ async function loadDemoParent() {
     btn.textContent = "Try with demo tx";
   }
 }
+
+document.addEventListener("DOMContentLoaded", loadRecentBumps);

@@ -292,3 +292,31 @@ footer {
 #state-expired p {
   color: var(--text-muted);
 }
+
+#recent-bumps-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+#recent-bumps-table th,
+#recent-bumps-table td {
+  text-align: left;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#recent-bumps-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#recent-bumps-table a {
+  display: inline;
+  text-align: left;
+  word-break: break-all;
+}

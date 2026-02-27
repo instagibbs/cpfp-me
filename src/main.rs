@@ -60,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
         payment: Arc::new(payment),
         orders: Arc::new(Mutex::new(HashMap::new())),
         demo_wallet: Arc::new(demo_wallet),
+        recent_bumps: Arc::new(Mutex::new(std::collections::VecDeque::new())),
     };
 
     cpfp_me::cleanup::spawn_cleanup_task(state.clone());
