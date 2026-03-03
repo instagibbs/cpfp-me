@@ -369,6 +369,7 @@ async function loadDemoParent() {
       return;
     }
     document.getElementById("raw-tx").value = data.raw_tx;
+    updateTxChecks();
   } catch (err) {
     showInputError("Network error: " + err.message);
   } finally {
