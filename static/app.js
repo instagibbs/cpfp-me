@@ -2,6 +2,120 @@
 
 const INVOICE_TTL_SECS = 60;
 
+// Minimal Bitcoin tx parser: extracts version and P2A output index.
+// Returns { truc: bool, p2a: bool, p2aVout: number|null } or null on parse failure.
+function parseTxChecks(rawHex) {
+  try {
+    const hex = rawHex.toLowerCase().replace(/\s/g, "");
+    if (hex.length < 18 || hex.length % 2 !== 0) return null;
+
+    let pos = 0;
+
+    function readHex(nBytes) {
+      if (pos + nBytes * 2 > hex.length) throw new Error("overflow");
+      const s = hex.slice(pos, pos + nBytes * 2);
+      pos += nBytes * 2;
+      return s;
+    }
+
+    function readUInt32LE() {
+      const b = readHex(4);
+      return (
+        parseInt(b.slice(0, 2), 16) |
+        (parseInt(b.slice(2, 4), 16) << 8) |
+        (parseInt(b.slice(4, 6), 16) << 16) |
+        (parseInt(b.slice(6, 8), 16) << 24)
+      ) >>> 0;
+    }
+
+    function readVarInt() {
+      const first = parseInt(readHex(1), 16);
+      if (first < 0xfd) return first;
+      if (first === 0xfd) {
+        const b = readHex(2);
+        return parseInt(b.slice(2, 4) + b.slice(0, 2), 16);
+      }
+      if (first === 0xfe) {
+        const b = readHex(4);
+        return parseInt(
+          b.slice(6, 8) + b.slice(4, 6) + b.slice(2, 4) + b.slice(0, 2), 16,
+        );
+      }
+      throw new Error("varint too large");
+    }
+
+    const version = readUInt32LE();
+
+    // Detect segwit marker (00 01) and skip it
+    if (hex.slice(pos, pos + 4) === "0001") {
+      pos += 4;
+    }
+
+    // Skip inputs
+    const inputCount = readVarInt();
+    for (let i = 0; i < inputCount; i++) {
+      readHex(32); // txid
+      readHex(4);  // vout index
+      const scriptLen = readVarInt();
+      readHex(scriptLen); // scriptSig
+      readHex(4);  // sequence
+    }
+
+    // Parse outputs, look for P2A: script = 51 02 4e 73 (OP_1 PUSH2 0x4e73)
+    const outputCount = readVarInt();
+    let p2aVout = null;
+    for (let i = 0; i < outputCount; i++) {
+      readHex(8); // value (8 bytes LE)
+      const scriptLen = readVarInt();
+      const script = readHex(scriptLen);
+      if (scriptLen === 4 && script === "51024e73" && p2aVout === null) {
+        p2aVout = i;
+      }
+    }
+
+    return { truc: version === 3, p2a: p2aVout !== null, p2aVout };
+  } catch (_) {
+    return null;
+  }
+}
+
+let txCheckDebounce = null;
+
+function updateTxChecks() {
+  const rawTx = document.getElementById("raw-tx").value.trim();
+  const container = document.getElementById("tx-checks");
+
+  if (!rawTx) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  const checks = parseTxChecks(rawTx);
+  if (!checks) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  container.classList.remove("hidden");
+
+  const trucEl = document.getElementById("check-truc");
+  trucEl.className = "check-item " + (checks.truc ? "check-pass" : "check-fail");
+  trucEl.querySelector(".check-icon").textContent = checks.truc ? "\u2713" : "\u2717";
+
+  const p2aEl = document.getElementById("check-p2a");
+  p2aEl.className = "check-item " + (checks.p2a ? "check-pass" : "check-fail");
+  p2aEl.querySelector(".check-icon").textContent = checks.p2a ? "\u2713" : "\u2717";
+  const p2aDetail = document.getElementById("check-p2a-detail");
+  p2aDetail.textContent = checks.p2a ? "(vout #" + checks.p2aVout + ")" : "(not found)";
+
+  const feeEl = document.getElementById("check-fee");
+  if (checks.truc && checks.p2a) {
+    feeEl.classList.remove("hidden");
+  } else {
+    feeEl.classList.add("hidden");
+  }
+}
+
 let currentOrderId = null;
 let pollInterval = null;
 let countdownInterval = null;
@@ -64,6 +178,19 @@ async function submitTx() {
   }
 }
 
+function showInvoiceChecks() {
+  const rawTx = document.getElementById("raw-tx").value.trim();
+  const checks = parseTxChecks(rawTx);
+  const container = document.getElementById("invoice-checks");
+  if (!checks) {
+    container.classList.add("hidden");
+    return;
+  }
+  container.classList.remove("hidden");
+  const p2aDetail = document.getElementById("icheck-p2a-detail");
+  p2aDetail.textContent = checks.p2a ? "(vout #" + checks.p2aVout + ")" : "";
+}
+
 function showInvoice(data) {
   document.getElementById("bolt11-text").textContent = data.bolt11;
   document.getElementById("fee-rate-display").textContent = data.fee_rate;
@@ -89,6 +216,7 @@ function showInvoice(data) {
   expiresAt = Date.now() + INVOICE_TTL_SECS * 1000;
   updateCountdown();
 
+  showInvoiceChecks();
   showState("invoice");
   startPolling();
   startCountdown();
@@ -182,6 +310,8 @@ function resetForm() {
   currentOrderId = null;
   expiresAt = null;
   document.getElementById("raw-tx").value = "";
+  document.getElementById("tx-checks").classList.add("hidden");
+  document.getElementById("invoice-checks").classList.add("hidden");
   clearInputError();
   showState("input");
 }
@@ -247,4 +377,12 @@ async function loadDemoParent() {
   }
 }
 
-document.addEventListener("DOMContentLoaded", loadRecentBumps);
+document.addEventListener("DOMContentLoaded", () => {
+  loadRecentBumps();
+
+  const textarea = document.getElementById("raw-tx");
+  textarea.addEventListener("input", () => {
+    clearTimeout(txCheckDebounce);
+    txCheckDebounce = setTimeout(updateTxChecks, 150);
+  });
+});

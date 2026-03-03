@@ -320,3 +320,155 @@ footer {
   text-align: left;
   word-break: break-all;
 }
+
+/* Tx validation checks (live, below textarea) */
+.tx-checks {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.check-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  border: 1.5px solid var(--border);
+  color: var(--text-muted);
+}
+
+.check-pass .check-icon {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.check-fail .check-icon {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.check-pending .check-icon {
+  background: transparent;
+  border-color: var(--border);
+  font-size: 0.65rem;
+}
+
+.check-label {
+  color: var(--text);
+}
+
+.check-detail {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+}
+
+/* Invoice-state checks (all green, shown above QR) */
+.invoice-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+  border-radius: 8px;
+}
+
+/* How it works section */
+#how-it-works {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+#how-it-works h2 {
+  margin-bottom: 1.25rem;
+}
+
+.concept-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 480px) {
+  .concept-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.concept-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.concept-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.concept-tag {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+
+.bip-link {
+  display: inline;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-align: left;
+  margin: 0;
+}
+
+.bip-link:hover {
+  color: var(--accent);
+}
+
+.concept-card p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.concept-card p em {
+  color: var(--text);
+  font-style: normal;
+}
+
+.concept-card p code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+}

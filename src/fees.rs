@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bitcoin::Amount;
+use bitcoin::{Amount, Transaction};
 use serde::Deserialize;
 
 use crate::error::AppError;
@@ -10,6 +10,59 @@ use crate::error::AppError;
 struct MempoolFees {
     #[serde(rename = "fastestFee")]
     fastest_fee: u64,
+}
+
+/// Computes the fee paid by a transaction by fetching each input's
+/// previous output value from Esplora (`GET /api/tx/{txid}`).
+///
+/// Esplora returns output values in satoshis as integers.
+pub async fn fetch_parent_fee(
+    client: &reqwest::Client,
+    mempool_url: &str,
+    tx: &Transaction,
+) -> Result<Amount, AppError> {
+    let mut input_sum = Amount::ZERO;
+
+    for input in &tx.input {
+        let txid = input.previous_output.txid;
+        let vout = input.previous_output.vout as usize;
+
+        let url = format!("{mempool_url}/api/tx/{txid}");
+        let resp = client.get(&url).send().await.map_err(|e| {
+            AppError::Internal(format!("failed to fetch input tx {txid}: {e}"))
+        })?;
+
+        if !resp.status().is_success() {
+            return Err(AppError::InvalidTx {
+                reason: format!(
+                    "could not look up input {txid}:{vout} (HTTP {})",
+                    resp.status()
+                ),
+            });
+        }
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| {
+            AppError::Internal(format!("invalid response for tx {txid}: {e}"))
+        })?;
+
+        let value_sat = json["vout"][vout]["value"].as_u64().ok_or_else(|| {
+            AppError::InvalidTx {
+                reason: format!("missing output value for {txid}:{vout}"),
+            }
+        })?;
+
+        input_sum = input_sum
+            .checked_add(Amount::from_sat(value_sat))
+            .ok_or_else(|| AppError::InvalidTx {
+                reason: "input value overflow".into(),
+            })?;
+    }
+
+    let output_sum: Amount = tx.output.iter().map(|o| o.value).sum();
+
+    input_sum.checked_sub(output_sum).ok_or_else(|| AppError::InvalidTx {
+        reason: "outputs exceed inputs".into(),
+    })
 }
 
 /// Fetches the current fastest fee rate. Tries mempool.space format

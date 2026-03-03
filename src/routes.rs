@@ -71,6 +71,25 @@ async fn handle_submit(
 ) -> Result<Json<SubmitResponse>, AppError> {
     let parent = validate::validate_parent_tx(&req.raw_tx)?;
 
+    // Verify the parent pays zero fee — required for ephemeral dust (P2A)
+    // relay policy. Fetch each input's UTXO value from Esplora and compute
+    // fee = sum(inputs) - sum(outputs).
+    let fee = fees::fetch_parent_fee(
+        &state.http_client,
+        &state.config.mempool_api_url,
+        &parent.tx,
+    )
+    .await?;
+    if fee != Amount::ZERO {
+        return Err(AppError::InvalidTx {
+            reason: format!(
+                "transaction fee is {} sat — must be zero; \
+                 ephemeral dust (P2A) requires a zero-fee parent",
+                fee.to_sat()
+            ),
+        });
+    }
+
     // Probe whether the parent is actually bumpable by submitting a
     // trial package with a 0-fee child. Rejects parents with spent
     // inputs or other non-fee policy violations before taking payment.

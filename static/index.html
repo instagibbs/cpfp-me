@@ -21,6 +21,20 @@
         We broadcast a CPFP child and get you into the next block.
       </p>
       <textarea id="raw-tx" placeholder="Paste raw transaction hex..." rows="6"></textarea>
+      <div id="tx-checks" class="tx-checks hidden">
+        <div class="check-item" id="check-truc">
+          <span class="check-icon"></span>
+          <span class="check-label">TRUC transaction <span class="check-detail">(version 3)</span></span>
+        </div>
+        <div class="check-item" id="check-p2a">
+          <span class="check-icon"></span>
+          <span class="check-label">P2A anchor output <span class="check-detail" id="check-p2a-detail"></span></span>
+        </div>
+        <div class="check-item check-pending hidden" id="check-fee">
+          <span class="check-icon">&#9203;</span>
+          <span class="check-label">Zero fee <span class="check-detail">(verified on submit)</span></span>
+        </div>
+      </div>
       <div class="button-row">
         <button id="btn-submit" onclick="submitTx()">Bump Transaction</button>
         <button id="btn-demo" class="btn-secondary" onclick="loadDemoParent()">Try with demo tx</button>
@@ -30,6 +44,20 @@
 
     <section id="state-invoice" class="hidden">
       <h2>Pay Lightning Invoice</h2>
+      <div id="invoice-checks" class="invoice-checks hidden">
+        <div class="check-item check-pass" id="icheck-truc">
+          <span class="check-icon">&#10003;</span>
+          <span class="check-label">TRUC transaction <span class="check-detail">(version 3)</span></span>
+        </div>
+        <div class="check-item check-pass" id="icheck-p2a">
+          <span class="check-icon">&#10003;</span>
+          <span class="check-label">P2A anchor output <span class="check-detail" id="icheck-p2a-detail"></span></span>
+        </div>
+        <div class="check-item check-pass" id="icheck-fee">
+          <span class="check-icon">&#10003;</span>
+          <span class="check-label">Zero miner fee <span class="check-detail">(CPFP will cover it)</span></span>
+        </div>
+      </div>
       <div class="invoice-card">
         <div id="qr-container"></div>
         <div class="bolt11-container">
@@ -80,6 +108,46 @@
         </thead>
         <tbody id="recent-bumps-body"></tbody>
       </table>
+    </section>
+
+    <section id="how-it-works">
+      <h2>How it works</h2>
+      <div class="concept-grid">
+        <div class="concept-card">
+          <div class="concept-header">
+            <span class="concept-tag">TRUC</span>
+            <a href="https://github.com/bitcoin/bips/blob/master/bip-0431.mediawiki" target="_blank" rel="noopener" class="bip-link">BIP 431 ↗</a>
+          </div>
+          <p>Version 3 transactions opt into <em>Topologically Restricted Until Confirmed</em> rules.
+          A TRUC parent can have at most one unconfirmed child, preventing transaction pinning
+          and enabling reliable package relay to miners.</p>
+        </div>
+        <div class="concept-card">
+          <div class="concept-header">
+            <span class="concept-tag">P2A</span>
+            <a href="https://github.com/bitcoin/bips/blob/master/bip-0433.mediawiki" target="_blank" rel="noopener" class="bip-link">BIP 433 ↗</a>
+          </div>
+          <p><em>Pay to Anchor</em> is a special output script (<code>OP_1 &lt;4e73&gt;</code>) that anyone can spend.
+          Adding a P2A output to your transaction lets a third party — like this service — attach
+          a CPFP child to bump your fee after the fact.</p>
+        </div>
+        <div class="concept-card">
+          <div class="concept-header">
+            <span class="concept-tag">Ephemeral Dust</span>
+          </div>
+          <p>P2A outputs are typically zero-value, which would normally be rejected as <em>dust</em>.
+          Bitcoin Core's ephemeral dust policy exempts them: a zero-value P2A output is allowed
+          provided it is spent in the same package, keeping the mempool clean.</p>
+        </div>
+        <div class="concept-card">
+          <div class="concept-header">
+            <span class="concept-tag">CPFP</span>
+          </div>
+          <p><em>Child-Pays-for-Parent</em>: a child transaction includes enough fee to cover
+          both itself and its low-fee parent. Miners take both transactions together,
+          so the parent gets confirmed without carrying any fee of its own.</p>
+        </div>
+      </div>
     </section>
 
     <footer>
