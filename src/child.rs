@@ -53,7 +53,7 @@ pub fn build_trial_child(parent: &ValidatedParent) -> Result<String, AppError> {
 ///
 /// Always picks one UTXO large enough to cover the fee.
 /// If above target count, adds one extra small UTXO to consolidate.
-fn select_wallet_utxos(
+pub(crate) fn select_wallet_utxos(
     wallet: &Wallet,
     total_fee: Amount,
     utxo_target: u32,
@@ -74,21 +74,90 @@ fn select_wallet_utxos(
 
     utxos.sort_by_key(|u| u.txout.value);
 
-    let primary = utxos
-        .iter()
-        .find(|u| u.txout.value >= total_fee)
-        .ok_or_else(|| AppError::Wallet("no UTXO large enough to cover the fee".into()))?;
+    let utxo_values: Vec<u64> =
+        utxos.iter().map(|u| u.txout.value.to_sat()).collect();
+    tracing::debug!(
+        confirmed_utxo_count = utxo_count,
+        confirmed_utxo_values_sats = ?utxo_values,
+        required_fee_sats = total_fee.to_sat(),
+        "selecting wallet UTXOs"
+    );
+
+    let Some(primary) =
+        utxos.iter().find(|u| u.txout.value >= total_fee)
+    else {
+        tracing::warn!(
+            confirmed_utxo_count = utxo_count,
+            confirmed_utxo_values_sats = ?utxo_values,
+            required_fee_sats = total_fee.to_sat(),
+            "no UTXO large enough to cover fee"
+        );
+        return Err(AppError::Wallet(
+            "no UTXO large enough to cover the fee".into(),
+        ));
+    };
+
+    tracing::debug!(
+        primary_outpoint = %primary.outpoint,
+        primary_value_sats = primary.txout.value.to_sat(),
+        "selected primary UTXO"
+    );
 
     let mut selected = vec![primary.outpoint];
 
     // Above target: fold in one extra small UTXO to consolidate
     if utxo_count > utxo_target {
-        if let Some(extra) = utxos.iter().find(|u| u.outpoint != primary.outpoint) {
+        if let Some(extra) =
+            utxos.iter().find(|u| u.outpoint != primary.outpoint)
+        {
+            tracing::debug!(
+                extra_outpoint = %extra.outpoint,
+                extra_value_sats = extra.txout.value.to_sat(),
+                "adding consolidation UTXO"
+            );
             selected.push(extra.outpoint);
         }
     }
 
     Ok(selected)
+}
+
+/// P2TR dust threshold — minimum change output value that won't be
+/// rejected as dust. Used by the preflight check to ensure the wallet
+/// can produce a valid change output after paying the fee.
+const P2TR_DUST_SATS: u64 = 330;
+
+/// Checks whether the wallet can fund a child tx at the given fee
+/// without building a PSBT or revealing addresses. Returns an error
+/// if UTXO selection fails or if the selected inputs can't cover the
+/// fee plus a dust-safe change output.
+pub(crate) fn preflight_check_wallet(
+    wallet: &Wallet,
+    total_fee: Amount,
+    utxo_target: u32,
+) -> Result<(), AppError> {
+    let selected = select_wallet_utxos(wallet, total_fee, utxo_target)?;
+
+    let input_total: Amount = wallet
+        .list_unspent()
+        .filter(|u| selected.contains(&u.outpoint))
+        .map(|u| u.txout.value)
+        .sum();
+
+    let dust = Amount::from_sat(P2TR_DUST_SATS);
+    let needed = total_fee + dust;
+    if input_total < needed {
+        return Err(AppError::Wallet(format!(
+            "selected UTXOs total {} sats but need {} sats \
+             (fee {} + dust {})",
+            input_total.to_sat(),
+            needed.to_sat(),
+            total_fee.to_sat(),
+            dust.to_sat(),
+        )));
+    }
+
+    Ok(())
 }
 
 /// Builds a CPFP child transaction that spends the parent's P2A

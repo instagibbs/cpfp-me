@@ -125,6 +125,14 @@ async fn handle_submit(
         }
     };
 
+    // Preflight: verify the wallet can actually fund this child tx
+    // before taking payment. Zero mutation — no addresses revealed,
+    // no PSBT built.
+    if let Err(e) = preflight_wallet_check(&state, fee_breakdown.mining_fee) {
+        state.wallet.release_reservation(&reserved_utxo);
+        return Err(e);
+    }
+
     let description = format!("cpfp.me: bump tx {}", parent.tx.compute_txid());
     // Invoice expiry matches UTXO reservation TTL so the invoice
     // becomes unpayable before the reservation is released.
@@ -386,6 +394,43 @@ fn build_child(
         .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
     let utxo_target = state.config.utxo_target_count;
     child::build_child_tx(&mut wallet, parent, mining_fee, utxo_target)
+}
+
+fn preflight_wallet_check(
+    state: &AppState,
+    mining_fee: Amount,
+) -> Result<(), AppError> {
+    let wallet = state
+        .wallet
+        .wallet
+        .lock()
+        .map_err(|e| AppError::Wallet(format!("wallet lock poisoned: {e}")))?;
+    let utxo_target = state.config.utxo_target_count;
+
+    if let Err(e) = child::preflight_check_wallet(&wallet, mining_fee, utxo_target)
+    {
+        let balance = wallet.balance().total().to_sat();
+        let confirmed: Vec<u64> = wallet
+            .list_unspent()
+            .filter(|u| {
+                matches!(
+                    u.chain_position,
+                    bdk_wallet::chain::ChainPosition::Confirmed { .. }
+                )
+            })
+            .map(|u| u.txout.value.to_sat())
+            .collect();
+        tracing::error!(
+            error = %e,
+            balance_sats = balance,
+            confirmed_utxo_count = confirmed.len(),
+            confirmed_utxo_values_sats = ?confirmed,
+            mining_fee_sats = mining_fee.to_sat(),
+            "preflight wallet check failed"
+        );
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// Test-only: simulate payment received for an order.
