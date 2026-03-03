@@ -87,16 +87,19 @@ function updateTxChecks() {
 
   if (!rawTx) {
     container.classList.add("hidden");
+    document.getElementById("btn-submit").disabled = true;
     return;
   }
 
   const checks = parseTxChecks(rawTx);
   if (!checks) {
     container.classList.add("hidden");
+    document.getElementById("btn-submit").disabled = true;
     return;
   }
 
   container.classList.remove("hidden");
+  document.getElementById("btn-submit").disabled = !(checks.truc && checks.p2a);
 
   const trucEl = document.getElementById("check-truc");
   trucEl.className = "check-item " + (checks.truc ? "check-pass" : "check-fail");
@@ -312,6 +315,7 @@ function resetForm() {
   document.getElementById("raw-tx").value = "";
   document.getElementById("tx-checks").classList.add("hidden");
   document.getElementById("invoice-checks").classList.add("hidden");
+  document.getElementById("btn-submit").disabled = true;
   clearInputError();
   showState("input");
 }
