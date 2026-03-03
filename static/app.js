@@ -386,10 +386,14 @@ document.addEventListener("DOMContentLoaded", () => {
   loadRecentBumps();
 
   const textarea = document.getElementById("raw-tx");
-  textarea.addEventListener("input", () => {
+  function onTextareaChange() {
     document.getElementById("btn-submit").disabled = true;
     document.getElementById("tx-checks").classList.add("hidden");
     clearTimeout(txCheckDebounce);
     txCheckDebounce = setTimeout(updateTxChecks, 150);
-  });
+  }
+
+  textarea.addEventListener("input", onTextareaChange);
+  textarea.addEventListener("cut", onTextareaChange);
+  textarea.addEventListener("paste", onTextareaChange);
 });
