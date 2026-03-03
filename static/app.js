@@ -47,7 +47,8 @@ function parseTxChecks(rawHex) {
     const version = readUInt32LE();
 
     // Detect segwit marker (00 01) and skip it
-    if (hex.slice(pos, pos + 4) === "0001") {
+    const isSegwit = hex.slice(pos, pos + 4) === "0001";
+    if (isSegwit) {
       pos += 4;
     }
 
@@ -72,6 +73,21 @@ function parseTxChecks(rawHex) {
         p2aVout = i;
       }
     }
+
+    // Parse witness stacks (one per input for segwit txs)
+    if (isSegwit) {
+      for (let i = 0; i < inputCount; i++) {
+        const itemCount = readVarInt();
+        for (let j = 0; j < itemCount; j++) {
+          readHex(readVarInt()); // witness item
+        }
+      }
+    }
+
+    readHex(4); // locktime
+
+    // Full consumption check: any truncation or trailing garbage fails here
+    if (pos !== hex.length) return null;
 
     return { truc: version === 3, p2a: p2aVout !== null, p2aVout };
   } catch (_) {
