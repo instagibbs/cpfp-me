@@ -267,7 +267,33 @@ async fn handle_paid(state: &AppState, order_id: &str) -> Result<Json<StatusResp
     // blocking on slow Esplora responses after user already paid.
     // The wallet's UTXO state is maintained by BDK as we build txs.
 
-    let built_child = build_child(state, &parent, mining_fee)?;
+    let built_child = match build_child(state, &parent, mining_fee) {
+        Ok(child) => child,
+        Err(e) => {
+            let reason = e.to_string();
+            tracing::error!(
+                order_id,
+                error = %reason,
+                "failed to build child tx after payment"
+            );
+            set_order_status(
+                state,
+                order_id,
+                OrderStatus::Failed {
+                    reason: reason.clone(),
+                },
+            )?;
+            return Ok(Json(StatusResponse {
+                status: "failed".into(),
+                error: Some(reason),
+                bolt11: None,
+                amount_sat: None,
+                fee_rate: None,
+                txid: None,
+                mempool_url: None,
+            }));
+        }
+    };
     let parent_txid = parent.tx.compute_txid().to_string();
 
     let result = broadcast::submit_package(

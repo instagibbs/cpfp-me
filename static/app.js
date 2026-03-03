@@ -284,6 +284,15 @@ async function checkStatus() {
     const resp = await fetch("/api/status/" + currentOrderId);
     const data = await resp.json();
 
+    if (!resp.ok) {
+      stopPolling();
+      stopCountdown();
+      document.getElementById("error-message").textContent =
+        data.error || "Something went wrong.";
+      showState("error");
+      return;
+    }
+
     if (data.status === "awaiting_payment") {
       return;
     }
